@@ -16,9 +16,6 @@
   "settings": {
     "python.defaultInterpreterPath": "${workspaceFolder:workspace-root}/.venv/bin/python",
     "python.terminal.activateEnvironment": true,
-    "python.analysis.extraPaths": [
-      "${workspaceFolder:workspace-root}/.venv/lib/python*/site-packages"
-    ],
     "files.exclude": {
       "**/__pycache__": true,
       "**/*.pyc": true,
@@ -28,8 +25,6 @@
     },
     "python.testing.pytestEnabled": true,
     "python.testing.unittestEnabled": false,
-    "python.linting.enabled": true,
-    "python.formatting.provider": "black",
     "[python]": {
       "editor.formatOnSave": true,
       "editor.defaultFormatter": "ms-python.black-formatter",
@@ -43,8 +38,7 @@
       "ms-python.python",
       "ms-python.vscode-pylance",
       "ms-python.black-formatter",
-      "charliermarsh.ruff",
-      "ms-python.isort"
+      "charliermarsh.ruff"
     ]
   }
 }

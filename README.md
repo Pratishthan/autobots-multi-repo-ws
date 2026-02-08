@@ -2,6 +2,39 @@
 
 This workspace manages multiple Python repositories with a shared virtual environment.
 
+## Pre-requisites
+
+1. **Getting base configs**
+   - Download the zip from template repo [here](https://github.com/Pratishthan/autobots-multi-repo-ws/archive/refs/heads/main.zip)
+   - Or
+      ```
+      https://github.com/Pratishthan/autobots-multi-repo-ws/archive/refs/heads/main.zip
+      ```
+   - Unzip `main.zip` into your `src` directory and rename as `$WORKSPACE_HOME` of your choice.
+   - Open VS Code from `$WORKSPACE_HOME`
+3. **Cloning Repos**
+   - Open VS Code terminal
+   - Clone the necessary repos
+      * `git clone https://github.com/Pratishthan/autobots-devtools-shared-lib.git`
+      * `git clone https://github.com/Pratishthan/autobots-agents-bro.git`
+   - Adjust Workspace folders accordingly
+     ```json
+     {
+        "folders": [
+          {
+            "name": "workspace-root",
+            "path": "."
+          },
+          {
+            "name": "autobots-devtools-shared-lib",
+            "path": "./autobots-devtools-shared-lib"
+          },
+        ]
+     }
+     ```
+5. **Save Workspace**
+   - File -> Save Workspace
+
 ## Quick Start
 
 1. **Initial Setup**

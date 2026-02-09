@@ -1,4 +1,4 @@
-.PHONY: help setup clean install install-dev test lint format check-format type-check all-checks update-deps
+.PHONY: help setup clean install install-dev install-hooks test lint format check-format type-check all-checks update-deps
 
 # Python version (customize as needed)
 PYTHON := python3.12
@@ -15,7 +15,7 @@ REPOS := autobots-devtools-shared-lib autobots-agents-bro
 
 help:
 	@echo "Available commands:"
-	@echo "  make setup          - Create shared virtual environment"
+	@echo "  make setup          - Create shared virtual environment and install pre-commit hooks"
 	@echo "  make install        - Install dependencies from all repos"
 	@echo "  make install-dev    - Install dev dependencies from all repos"
 	@echo "  make clean          - Remove virtual environment and cache files"
@@ -36,9 +36,18 @@ $(VENV)/bin/activate:
 	$(PYTHON) -m venv $(VENV)
 	$(PIP) install --upgrade pip setuptools wheel
 	@echo "Installing common dev tools..."
-	$(PIP) install black ruff pytest pytest-cov mypy isort
+	$(PIP) install black ruff pytest pytest-cov mypy isort pre-commit
+	@echo ""
+	@echo "Installing pre-commit hooks in all repos..."
+	@for repo in $(REPOS); do \
+		if [ -f "$$repo/.pre-commit-config.yaml" ]; then \
+			echo "Installing hooks in $$repo..."; \
+			(cd $$repo && $(BIN)/pre-commit install && $(BIN)/pre-commit install --hook-type commit-msg) || true; \
+		fi; \
+	done
 	@echo ""
 	@echo "Virtual environment created at $(VENV)"
+	@echo "Pre-commit hooks installed in all repos"
 	@echo "To activate: source $(VENV)/bin/activate"
 
 install: setup

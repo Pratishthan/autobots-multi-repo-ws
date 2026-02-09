@@ -6,11 +6,11 @@
     },
     {
       "name": "autobots-devtools-shared-lib",
-      "path": "./autobots-devtools-shared-lib"
+      "path": "autobots-devtools-shared-lib"
     },
     {
       "name": "autobots-agents-bro",
-      "path": "./autobots-agents-bro"
+      "path": "autobots-agents-bro"
     }
   ],
   "settings": {
@@ -21,7 +21,9 @@
       "**/*.pyc": true,
       "**/.pytest_cache": true,
       "**/.mypy_cache": true,
-      "**/.ruff_cache": true
+      "**/.ruff_cache": true,
+      "autobots-devtools-shared-lib": true,
+      "autobots-agents-bro": true
     },
     "python.testing.pytestEnabled": true,
     "python.testing.unittestEnabled": false,

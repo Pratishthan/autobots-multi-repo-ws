@@ -4,35 +4,20 @@ This workspace manages multiple Python repositories with a shared virtual enviro
 
 ## Pre-requisites
 
+0. **Dependent Softwares**
+   - Python3.12
+   - Docker (OrbStack)
 1. **Getting base configs**
-   - Download the zip from template repo [here](https://github.com/Pratishthan/autobots-multi-repo-ws/archive/refs/heads/main.zip)
-   - Or
-      ```
-      https://github.com/Pratishthan/autobots-multi-repo-ws/archive/refs/heads/main.zip
-      ```
-   - Unzip `main.zip` into your `src` directory and rename as `$WORKSPACE_HOME` of your choice.
-   - Open VS Code from `$WORKSPACE_HOME`
-3. **Cloning Repos**
+   - git clone repo 
+      * `git clone https://github.com/Pratishthan/autobots-multi-repo-ws.git`
+   - Open VS Code from cloned location
+2. **Cloning Repos**
    - Open VS Code terminal
-   - Clone the necessary repos
+   - Clone the necessary repos (inside the same workspace directory)
       * `git clone https://github.com/Pratishthan/autobots-devtools-shared-lib.git`
       * `git clone https://github.com/Pratishthan/autobots-agents-bro.git`
-   - Adjust Workspace folders accordingly
-     ```json
-     {
-        "folders": [
-          {
-            "name": "workspace-root",
-            "path": "."
-          },
-          {
-            "name": "autobots-devtools-shared-lib",
-            "path": "./autobots-devtools-shared-lib"
-          },
-        ]
-     }
-     ```
-5. **Save Workspace**
+   - In case you have additional repositories, clone the same and make entry in `autobots-multi.code-workspace`
+3. **Save Workspace**
    - File -> Save Workspace
 
 ## Quick Start
@@ -43,8 +28,7 @@ This workspace manages multiple Python repositories with a shared virtual enviro
    ```
    This creates a shared virtual environment at `.venv/`
 
-2. **Add Your Repositories**
-   - Clone your Python repos into this directory
+2. **In Case of Additional Repositories**
    - Update `REPOS` variable in `Makefile` with repo directory names
    - Update `autobots-multi.code-workspace` to add folder entries for each repo
 

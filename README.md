@@ -7,15 +7,16 @@ This workspace manages multiple Python repositories with a shared virtual enviro
 0. **Dependent Softwares**
    - Python3.12
    - Docker (OrbStack)
+     - For Orbstack via Brew `brew install --cask orbstack`
 1. **Getting base configs**
-   - git clone repo 
-      * `git clone https://github.com/Pratishthan/autobots-multi-repo-ws.git`
+   - git clone repo
+     * `git clone https://github.com/Pratishthan/autobots-multi-repo-ws.git`
    - Open VS Code from cloned location
 2. **Cloning Repos**
    - Open VS Code terminal
    - Clone the necessary repos (inside the same workspace directory)
-      * `git clone https://github.com/Pratishthan/autobots-devtools-shared-lib.git`
-      * `git clone https://github.com/Pratishthan/autobots-agents-bro.git`
+     * `git clone https://github.com/Pratishthan/autobots-devtools-shared-lib.git`
+     * `git clone https://github.com/Pratishthan/autobots-agents-bro.git`
    - In case you have additional repositories, clone the same and make entry in `autobots-multi.code-workspace`
 3. **Save Workspace**
    - File -> Save Workspace
@@ -23,26 +24,35 @@ This workspace manages multiple Python repositories with a shared virtual enviro
 ## Quick Start
 
 1. **Initial Setup**
-   ```bash
-   alias make_setup_env='make setup && echo "Activating virtual env" && source .venv/bin/activate'
-   make_setup_env
-   ```
-   This creates a shared virtual environment at `.venv/`
 
+   ```bash
+   make setup
+   ```
+
+   This creates a shared virtual environment at `.venv/`
 2. **In Case of Additional Repositories**
+
    - Update `REPOS` variable in `Makefile` with repo directory names
    - Update `autobots-multi.code-workspace` to add folder entries for each repo
-
 3. **Install Dependencies**
+
    ```bash
    make install        # Install all requirements
    make install-dev    # Install dev dependencies
    ```
-
 4. **Open in VS Code**
+
    ```bash
    code autobots-multi.code-workspace
    ```
+## Starting Development
+
+1. Go to `autobots-agents-bro`
+2. Open a new terminal
+3. IMPORTANT: Ensure .venv is exported before we start docker build
+4. Copy .env.example to .env before we run the next commands
+5. Run `make docker-build`
+6. Run `make docker-up`
 
 ## Makefile Commands
 
@@ -78,24 +88,25 @@ autobots-multi/
 ## Adding a New Repository
 
 1. Clone the repo:
+
    ```bash
    git clone <repo-url>
    ```
-
 2. Update `Makefile`:
+
    ```makefile
    REPOS := repo1 repo2 new-repo
    ```
-
 3. Update `autobots-multi.code-workspace`:
+
    ```json
    {
      "name": "new-repo",
      "path": "./new-repo"
    }
    ```
-
 4. Install dependencies:
+
    ```bash
    make install
    ```
@@ -103,6 +114,7 @@ autobots-multi/
 ## VS Code Integration
 
 The workspace is configured with:
+
 - Shared Python interpreter from `.venv/`
 - Auto-formatting with Black on save
 - Import organization with isort

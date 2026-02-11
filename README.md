@@ -26,7 +26,8 @@ This workspace manages multiple Python repositories with a shared virtual enviro
 1. **Initial Setup**
 
    ```bash
-   make setup
+   alias make_setup_env='make setup && echo "Activating virtual env" && source .venv/bin/activate'
+   make_setup_env
    ```
 
    This creates a shared virtual environment at `.venv/`

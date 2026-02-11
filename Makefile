@@ -10,7 +10,7 @@ PYTHON_BIN := $(BIN)/python
 PIP := $(BIN)/pip
 
 # List your repo directories here as you add them
-REPOS := autobots-devtools-shared-lib autobots-agents-bro
+REPOS := autobots-devtools-shared-lib autobots-agent-jarvis
 # Example: REPOS := repo1 repo2 repo3
 
 help:

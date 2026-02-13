@@ -1,33 +1,37 @@
 # Python Multi-Repo Workspace
 
-This workspace manages multiple Python repositories with a shared virtual environment.
+This workspace manages multiple Python repositories with a shared virtual environment. It uses `Dynagent` and `Jarvis` co-development as a use case.
 
 ## Pre-requisites
 
 0. **Dependent Softwares**
-   - Python3.12
+   - Python 3.12
+   - VS Code
    - Docker (OrbStack)
      - For Orbstack via Brew `brew install --cask orbstack`
 1. **Getting base configs**
-   - git clone repo
-     * `git clone https://github.com/Pratishthan/autobots-multi-repo-ws.git`
-   - Open VS Code from cloned location
-2. **Cloning Repos**
+   - git clone repo into your repo directory with a name of your choice. In this case its `ws-jarvis`
+     * `git clone https://github.com/Pratishthan/autobots-multi-repo-ws.git ws-jarvis`
+   - Open VS Code from cloned location i.e. `ws-jarvis`
+     * `cd ws-jarvis && code .`
+2. **Cloning Other Repos**
    - Open VS Code terminal
-   - Clone the necessary repos (inside the same workspace directory)
+   - Clone the necessary repos (inside the SAME workspace directory that you just cloned `ws-jarvis`)
+     * `pwd` <- Should return `ws-jarvis`
      * `git clone https://github.com/Pratishthan/autobots-devtools-shared-lib.git`
-     * `git clone https://github.com/Pratishthan/autobots-agents-bro.git`
-   - In case you have additional repositories, clone the same and make entry in `autobots-multi.code-workspace`
+     * `git clone https://github.com/Pratishthan/autobots-agents-jarvis.git`
+   - In case you have additional repositories, clone the same and make entry in `autobots-multi.code-workspace` in `folders` and `files.exclude` sections
 3. **Save Workspace**
    - File -> Save Workspace
+   - Restart VS Code or from command pallet `Developer: Reload Window`
 
 ## Quick Start
 
 1. **Initial Setup**
 
+   To create a share venv for the workspace run the following commands from a VS Code terminal while in `ws-jarvis` directory
    ```bash
-   alias make_setup_env='make setup && echo "Activating virtual env" && source .venv/bin/activate'
-   make_setup_env
+   make setup
    ```
 
    This creates a shared virtual environment at `.venv/`
@@ -35,6 +39,7 @@ This workspace manages multiple Python repositories with a shared virtual enviro
 
    - Update `REPOS` variable in `Makefile` with repo directory names
    - Update `autobots-multi.code-workspace` to add folder entries for each repo
+     
 3. **Install Dependencies**
 
    ```bash

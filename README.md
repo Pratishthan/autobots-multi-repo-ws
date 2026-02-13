@@ -51,8 +51,10 @@ This workspace manages multiple Python repositories with a shared virtual enviro
 4. **Install Dependencies**
 
    ```bash
-   make install        # Install all requirements
-   make install-dev    # Install dev dependencies
+   # Install all requirements
+   make install
+   # Install dev dependencies
+   make install-dev
    ```
 5. **Open in VS Code**
 

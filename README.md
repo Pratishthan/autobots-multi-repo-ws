@@ -23,30 +23,38 @@ This workspace manages multiple Python repositories with a shared virtual enviro
    - In case you have additional repositories, clone the same and make entry in `autobots-multi.code-workspace` in `folders` and `files.exclude` sections
 3. **Save Workspace**
    - File -> Save Workspace
-   - Restart VS Code or from command pallet `Developer: Reload Window`
+   - Restart VS Code or from command palette `Developer: Reload Window`
 
 ## Quick Start
 
 1. **Initial Setup**
 
-   To create a share venv for the workspace run the following commands from a VS Code terminal while in `ws-jarvis` directory
+   To create a share venv for the workspace run the following commands from a VS Code terminal while in `ws-jarvis` directory:
+   `python --version`  --> Should be 3.12 or 3.13
+   
    ```bash
    make setup
    ```
+   Now we need to activate this venv, create at `ws-jarvis/.venv` in both terminal and VS Code
+   ```bash
+   source .venv/bin/activate
+   ```
+   VS Code
+   Command palette --> Python: Select Interpreter --> Workspace Root --> Use Python from python.defaultInterpreterPath
 
    This creates a shared virtual environment at `.venv/`
-2. **In Case of Additional Repositories**
+3. **In Case of Additional Repositories**
 
    - Update `REPOS` variable in `Makefile` with repo directory names
    - Update `autobots-multi.code-workspace` to add folder entries for each repo
      
-3. **Install Dependencies**
+4. **Install Dependencies**
 
    ```bash
    make install        # Install all requirements
    make install-dev    # Install dev dependencies
    ```
-4. **Open in VS Code**
+5. **Open in VS Code**
 
    ```bash
    code autobots-multi.code-workspace

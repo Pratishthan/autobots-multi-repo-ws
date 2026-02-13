@@ -9,8 +9,8 @@
       "path": "autobots-devtools-shared-lib"
     },
     {
-      "name": "autobots-agent-jarvis",
-      "path": "autobots-agent-jarvis"
+      "name": "autobots-agents-jarvis",
+      "path": "autobots-agents-jarvis"
     },
   ],
   "settings": {
@@ -23,7 +23,7 @@
       "**/.mypy_cache": true,
       "**/.ruff_cache": true,
       "autobots-devtools-shared-lib": true,
-      "autobots-agent-jarvis": true,
+      "autobots-agents-jarvis": true,
     },
     "python.testing.pytestEnabled": true,
     "python.testing.unittestEnabled": false,

@@ -1,6 +1,6 @@
 # Objective
 
-To create a sample repo `autobots-agent-jarvis` which provides users an insight on how to use functionality provided by `autobots-devtools-shared-lib.dynagent`
+To create a sample repo `autobots-agents-jarvis` which provides users an insight on how to use functionality provided by `autobots-devtools-shared-lib.dynagent`
 
 
 # Motivation
@@ -25,7 +25,7 @@ USE_CASE=jarvis
 
 # How
 
-1. Make a copy of `autobots-agents-bro` and call it `autobots-agent-jarvis`
+1. Make a copy of `autobots-agents-bro` and call it `autobots-agents-jarvis`
 2. Update `configs/bro` to `configs/jarvis`
 3. Copy relevant files and tests
 4. Avoid the word BRO, Use case etc.

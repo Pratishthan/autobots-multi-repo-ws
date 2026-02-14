@@ -7,9 +7,18 @@ This file provides guidance to AI coding agents (Cursor, Claude Code) when worki
 This is a **Python multi-repo workspace** (`ws-jarvis`) containing two main repositories that work together:
 
 - **autobots-devtools-shared-lib**: Core framework library providing the Dynagent multi-agent system
-- **autobots-agents-jarvis**: Demo application showcasing Dynagent framework with a multi-agent AI assistant
+- **autobots-agents-jarvis**: Demo application showcasing Dynagent framework with **multi-domain multi-agent architecture**
 
 All repos share a **single virtual environment** at `ws-jarvis/.venv/`.
+
+### Multi-Domain Architecture
+
+Jarvis demonstrates **three independent business domains** running simultaneously:
+- **Jarvis** (port 2337) - General assistant with jokes and weather
+- **Customer Support** (port 1338) - Ticket management and knowledge base
+- **Sales** (port 1339) - Lead qualification and product recommendations
+
+Each domain has its own agent configuration, tools, and services, while sharing common utilities.
 
 ## Architecture
 
@@ -49,22 +58,48 @@ src/autobots_devtools_shared_lib/
     └── utils/            # General utilities
 ```
 
-**autobots-agents-jarvis structure:**
+**autobots-agents-jarvis structure (Multi-Domain):**
 
 ```
 src/autobots_agents_jarvis/
-├── tools/                # Custom tools for Jarvis agents
-├── services/             # Business logic (joke, weather, batch)
-├── servers/              # Chainlit UI server (jarvis_ui.py)
-├── configs/              # Pydantic settings
-├── models/               # Data models
-└── utils/                # Formatting helpers
+├── common/               # SHARED code across ALL domains
+│   ├── tools/           # Shared validation tools (email, phone, URL)
+│   ├── services/        # Shared service patterns
+│   └── utils/           # Shared formatting utilities
+│
+├── domains/             # DOMAIN-SPECIFIC code
+│   ├── jarvis/         # Jarvis domain implementation
+│   │   ├── server.py   # Chainlit server (port 2337)
+│   │   ├── tools.py    # Domain tools (jokes, weather)
+│   │   └── services.py # Business logic
+│   ├── customer_support/  # Customer Support domain
+│   │   ├── server.py   # Chainlit server (port 1338)
+│   │   ├── tools.py    # Domain tools (tickets, KB)
+│   │   └── services.py # Business logic
+│   └── sales/          # Sales domain
+│       ├── server.py   # Chainlit server (port 1339)
+│       ├── tools.py    # Domain tools (leads, products)
+│       └── services.py # Business logic
+│
+├── configs/            # Shared settings
+└── models/             # Shared data models
 
-agent_configs/jarvis/           # Agent configuration
-├── agents.yaml           # Agent definitions
-├── prompts/              # Agent system prompts (.md files)
-└── schemas/              # Output JSON schemas
+agent_configs/          # Agent configurations PER DOMAIN
+├── jarvis/            # Jarvis agent config
+│   ├── agents.yaml
+│   ├── prompts/
+│   └── schemas/
+├── customer-support/  # Customer Support agent config
+│   ├── agents.yaml
+│   ├── prompts/
+│   └── schemas/
+└── sales/             # Sales agent config
+    ├── agents.yaml
+    ├── prompts/
+    └── schemas/
 ```
+
+**Key Pattern**: Each domain in `domains/{name}/` has `server.py`, `tools.py`, `services.py`. Shared code lives in `common/`.
 
 ## Dynagent API (for Jarvis and other consumers)
 
@@ -230,8 +265,11 @@ make lint               # Lint with auto-fix
 make check-format       # Check formatting without modifying
 make type-check         # Run pyright
 
-# Jarvis-specific
-make chainlit-dev       # Run Chainlit UI server (port 1337)
+# Domain-specific (run from autobots-agents-jarvis/)
+make chainlit-dev                  # Run Jarvis UI (port 2337)
+make chainlit-customer-support     # Run Customer Support UI (port 1338)
+make chainlit-sales                # Run Sales UI (port 1339)
+make chainlit-all                  # Run all domains simultaneously
 
 # Docker (Jarvis only)
 make docker-build       # Build Docker image
@@ -240,9 +278,65 @@ make docker-down        # Stop docker-compose services
 make docker-logs-compose # View logs
 ```
 
+## Working with Multi-Domain Architecture
+
+### Adding a New Domain
+
+To add a fourth domain (e.g., "HR"):
+
+1. **Create domain directory structure:**
+   ```bash
+   mkdir -p agent_configs/hr/{prompts,schemas}
+   mkdir -p src/autobots_agents_jarvis/domains/hr
+   ```
+
+2. **Create agent config** at `agent_configs/hr/agents.yaml`
+3. **Create prompts** in `agent_configs/hr/prompts/*.md`
+4. **Create schemas** (if needed) in `agent_configs/hr/schemas/*.json`
+5. **Implement domain code**:
+   - `domains/hr/services.py` - Business logic
+   - `domains/hr/tools.py` - LangChain @tool wrappers + `register_hr_tools()`
+   - `domains/hr/server.py` - Chainlit server (copy from another domain, update APP_NAME and port)
+6. **Create run script** at `sbin/run_hr.sh` with unique port (e.g., 1340)
+7. **Update Makefile** with `chainlit-hr` target
+8. **Optionally use shared tools** by calling `register_validation_tools()` in server.py
+
+### Shared vs Domain-Specific Code
+
+**When to use `common/`**:
+- Code that 2+ domains need (validation, formatting, base classes)
+- Generic utilities with no business logic
+
+**When to use `domains/{name}/`**:
+- Code specific to one business domain
+- Domain-specific tools, services, models
+- Domain-specific business logic
+
+**Example**:
+```python
+# domains/customer_support/server.py
+from autobots_agents_jarvis.common.tools.validation_tools import register_validation_tools  # SHARED
+from autobots_agents_jarvis.domains.customer_support.tools import register_customer_support_tools  # DOMAIN-SPECIFIC
+
+register_validation_tools()  # Opt-in to shared tools
+register_customer_support_tools()  # Register domain tools
+```
+
+### Running Multiple Domains
+
+```bash
+# Run all domains simultaneously
+make chainlit-all  # or: ./sbin/run_all_domains.sh
+
+# Run individual domains
+make chainlit-dev                  # Jarvis (2337)
+make chainlit-customer-support     # Customer Support (1338)
+make chainlit-sales                # Sales (1339)
+```
+
 ## Working with Agents
 
-### Adding a New Agent to Jarvis
+### Adding a New Agent to an Existing Domain (e.g., Jarvis)
 
 1. **Define agent in `agent_configs/jarvis/agents.yaml`:**
 
@@ -260,7 +354,7 @@ make docker-logs-compose # View logs
 
 2. **Create prompt** at `agent_configs/jarvis/prompts/my-new-agent.md`
 3. **Create output schema** (if needed) at `agent_configs/jarvis/schemas/my-new-agent.json`
-4. **Implement tools** in `src/autobots_agents_jarvis/tools/jarvis_tools.py`:
+4. **Implement tools** in `src/autobots_agents_jarvis/domains/jarvis/tools.py`:
 
    ```python
    @tool

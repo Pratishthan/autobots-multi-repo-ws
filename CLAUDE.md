@@ -365,19 +365,30 @@ make test                                   # With coverage
 
 ## Pre-commit Hooks
 
-Both repos have pre-commit hooks that run automatically:
+Both repos have pre-commit hooks that run automatically on `git commit`:
 
 - Ruff formatting and linting
 - Pyright type checking
-- Conventional commit message validation
+- Pytest (unit tests)
+- Poetry check
+
+**Hooks only run when you commit from inside each repo** (`autobots-agents-jarvis/` or `autobots-devtools-shared-lib/`), not from the workspace root (`ws-jarvis/`).
 
 ```bash
 # Install hooks (done automatically by make setup)
 make install-hooks
 
-# Run manually
+# Run manually (from the repo you are committing)
 make pre-commit
 ```
+
+### If git commit fails (pre-commit / hooks)
+
+1. **Activate the workspace venv** (from `ws-jarvis/`): `source .venv/bin/activate`
+2. **Reinstall hooks** so they use the venv’s pre-commit:  
+   `cd autobots-agents-jarvis && make install-hooks` (or the repo you’re committing in)
+3. **Run hooks yourself** before committing: `make pre-commit` in that repo
+4. To commit without running hooks once: `git commit --no-verify` (use only if you’ll fix issues right after)
 
 ## Batch Processing
 
@@ -398,6 +409,8 @@ Batch processing runs multiple prompts in parallel for the same agent.
 
 ## Important Notes
 
+- **Activate venv first**: Always activate the workspace venv before running any Python command (e.g. `source .venv/bin/activate` from `ws-jarvis/`), so that scripts, tests, and tools use the correct environment.
+- **Git commit / pre-commit**: Commit from inside `autobots-agents-jarvis/` or `autobots-devtools-shared-lib/` (not the workspace root). If hooks fail, activate venv then run `make install-hooks` and `make pre-commit` in that repo (see [Pre-commit Hooks](#pre-commit-hooks)).
 - **Shared venv**: All repos use `ws-jarvis/.venv/`, not individual venvs
 - **Pyright config**: Set `venvPath = ".."` and `venv = ".venv"` to find the shared venv
 - **Import paths**: Use package names (`autobots_devtools_shared_lib`, `autobots_agents_jarvis`)

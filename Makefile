@@ -1,4 +1,4 @@
-.PHONY: help setup clean install install-dev install-hooks test lint format check-format type-check all-checks update-deps
+.PHONY: help setup clean install install-dev install-hooks test sanity lint format check-format type-check all-checks update-deps
 
 # Python version (customize as needed)
 PYTHON := python3.12
@@ -20,6 +20,7 @@ help:
 	@echo "  make install-dev    - Install dev dependencies from all repos"
 	@echo "  make clean          - Remove virtual environment and cache files"
 	@echo "  make test           - Run tests from all repos"
+	@echo "  make sanity         - Run sanity tests (Dynagent canary via Jarvis)"
 	@echo "  make lint           - Run linter on all repos"
 	@echo "  make format         - Format code in all repos"
 	@echo "  make check-format   - Check code formatting without modifying"
@@ -96,6 +97,9 @@ clean:
 	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	@echo "Cleanup complete!"
+
+sanity:
+	./autobots-agents-jarvis/sbin/sanity_test.sh
 
 test: setup
 	@echo "Running tests from all repos..."

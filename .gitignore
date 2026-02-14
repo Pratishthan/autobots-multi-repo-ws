@@ -2,3 +2,4 @@
 .chainlit
 .DS_Store
 data/
+.coverage

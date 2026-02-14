@@ -1,6 +1,6 @@
-# CLAUDE.md
+# CLAUDE.md / AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents (Cursor, Claude Code) when working with code in this repository.
 
 ## Repository Overview
 
@@ -19,10 +19,10 @@ The core concept is a **multi-agent system** where:
 
 1. **Agents** are defined in YAML configs (`agent_configs/jarvis/agents.yaml` for Jarvis)
 2. Each agent has:
-   - A **prompt** (markdown file in `configs/jarvis/prompts/`)
-   - Optional **output schema** (JSON file in `configs/jarvis/schemas/`)
+   - A **prompt** (markdown file in `agent_configs/jarvis/prompts/`)
+   - Optional **output schema** (JSON file in `agent_configs/jarvis/schemas/`)
    - A list of **tools** it can use
-     - Some bootstrap tools are provided by Dynagent - others need to be code for my the use case. E.g.  `get_forecast` in `jarvis_tools.py`
+     - Some built-in tools are provided by Dynagent; others must be implemented per use case (e.g. `get_forecast` in `jarvis_tools.py`)
    - Optional **batch processing** capability
 3. **Agent handoff** (a Dynagent tool) allows agents to transfer control to specialized agents - this is useful to create agent mesh architecture.
 4. **Tools** are LangChain tools registered in the application code
@@ -65,6 +65,134 @@ agent_configs/jarvis/           # Agent configuration
 ├── prompts/              # Agent system prompts (.md files)
 └── schemas/              # Output JSON schemas
 ```
+
+## Dynagent API (for Jarvis and other consumers)
+
+Import from `autobots_devtools_shared_lib.dynagent` for a stable public API.
+
+### Agent creation
+
+```python
+from autobots_devtools_shared_lib.dynagent import create_base_agent
+
+def create_base_agent(
+    checkpointer: Any = None,
+    sync_mode: bool = False,
+    initial_agent_name: str | None = None,
+) -> CompiledStateGraph:
+    """
+    Args:
+        checkpointer: LangGraph checkpointer (default: InMemorySaver).
+        sync_mode: Use sync middleware (for batch). False for UI streaming.
+        initial_agent_name: Starting agent (default: agent with is_default: true in agents.yaml).
+    Returns:
+        Configured LangGraph agent (CompiledStateGraph).
+    """
+```
+
+### Agent invocation (sync / async)
+
+```python
+from autobots_devtools_shared_lib.dynagent import invoke_agent, ainvoke_agent
+
+def invoke_agent(
+    agent_name: str,
+    input_state: dict[str, Any],
+    config: RunnableConfig,
+    enable_tracing: bool = True,
+    trace_metadata: TraceMetadata | None = None,
+) -> dict[str, Any]:
+    """Synchronously invoke agent. Returns final state (messages, structured_response, etc.)."""
+
+async def ainvoke_agent(
+    agent_name: str,
+    input_state: dict[str, Any],
+    config: RunnableConfig,
+    enable_tracing: bool = True,
+    trace_metadata: TraceMetadata | None = None,
+) -> dict[str, Any]:
+    """Asynchronously invoke agent. Returns final state dict."""
+```
+
+`input_state` must include at least `"messages"`; optionally `session_id`, `agent_name`, `user_name`, etc.
+
+### Batch processing
+
+```python
+from autobots_devtools_shared_lib.dynagent import batch_invoker, BatchResult, RecordResult
+
+def batch_invoker(
+    agent_name: str,
+    records: list[str],
+    callbacks: list[Any] | None = None,
+    enable_tracing: bool = True,
+    trace_metadata: TraceMetadata | None = None,
+) -> BatchResult:
+    """Run prompts in parallel. Agent must have batch_enabled: true in agents.yaml."""
+
+@dataclass
+class RecordResult:
+    index: int
+    success: bool
+    output: str | None = None
+    error: str | None = None
+
+@dataclass
+class BatchResult:
+    agent_name: str
+    total: int
+    results: list[RecordResult]
+    # .successes, .failures properties
+```
+
+### Tool registration
+
+```python
+from autobots_devtools_shared_lib.dynagent import register_usecase_tools
+
+def register_usecase_tools(tools: list[Any]) -> None:
+    """Register use-case tools. Call once at app startup before create_base_agent."""
+```
+
+### Config helpers
+
+```python
+from autobots_devtools_shared_lib.dynagent import get_batch_enabled_agents
+
+def get_batch_enabled_agents() -> list[str]:
+    """Return agent names with batch_enabled=True."""
+```
+
+### UI streaming (Chainlit)
+
+```python
+from autobots_devtools_shared_lib.dynagent.ui import stream_agent_events, structured_to_markdown
+
+async def stream_agent_events(
+    agent: CompiledStateGraph,
+    input_state: dict[str, Any],
+    config: RunnableConfig,
+    on_structured_output: Callable[[dict[str, Any], str | None], str] | None = None,
+    enable_tracing: bool = True,
+    trace_metadata: TraceMetadata | None = None,
+) -> None:
+    """Stream agent events to Chainlit UI. Handles tokens, tool steps, structured output."""
+
+def structured_to_markdown(data: dict[str, Any], title: str = "Response") -> str:
+    """Convert structured output dict to Markdown."""
+```
+
+### Built-in tools (available to all agents)
+
+- `handoff(runtime: ToolRuntime[None, Dynagent], next_agent: str) -> Command` — Transfer to another agent
+- `get_agent_list() -> str` — Return comma-separated list of agent names
+- `output_format_converter_tool`, `get_context`, `set_context`, `update_context`, `clear_context`
+- `read_file_tool`, `write_file_tool`, `list_files_tool`, `move_file_tool`, `create_download_link_tool`, `get_disk_usage_tool`
+
+### Models
+
+- `Dynagent`: LangGraph state schema (messages, agent_name, session_id, structured_response, etc.)
+- `TraceMetadata`: session_id, app_name, user_id, tags — for Langfuse observability
 
 ## Development Commands
 
@@ -116,21 +244,22 @@ make docker-logs-compose # View logs
 
 ### Adding a New Agent to Jarvis
 
-1. **Define agent in `configs/jarvis/agents.yaml`:**
+1. **Define agent in `agent_configs/jarvis/agents.yaml`:**
 
    ```yaml
    agents:
      my_agent:
        prompt: "my-new-agent"
-       output_schema: "my-new-agent.json"  # optional
+       output_schema: "my-new-agent.json" # optional
        batch_enabled: false
        tools:
-         - "my_tool" # Use case 
+         - "my_tool" # Use case
          - "handoff" # Dynagent
-         - "get_agent_list"  # Dynagent
+         - "get_agent_list" # Dynagent
    ```
-2. **Create prompt** at `configs/jarvis/prompts/my-new-agent.md`
-3. **Create output schema** (if needed) at `configs/jarvis/schemas/my-new-agent.json`
+
+2. **Create prompt** at `agent_configs/jarvis/prompts/my-new-agent.md`
+3. **Create output schema** (if needed) at `agent_configs/jarvis/schemas/my-new-agent.json`
 4. **Implement tools** in `src/autobots_agents_jarvis/tools/jarvis_tools.py`:
 
    ```python
@@ -141,6 +270,7 @@ make docker-logs-compose # View logs
        # Implementation
        return "result"
    ```
+
 5. **Register tools** in the `register_jarvis_tools()` function
 6. **Add tests** in `tests/unit/` or `tests/integration/`
 
@@ -163,7 +293,7 @@ GOOGLE_API_KEY=your-api-key                     # For Gemini LLM
 ANTHROPIC_API_KEY=your-api-key                  # For Claude Sonnet LLM
 
 # Optional
-DYNAGENT_CONFIG_ROOT_DIR=configs/jarvis         # Agent config location
+DYNAGENT_CONFIG_ROOT_DIR=agent_configs/jarvis   # Agent config location
 LANGFUSE_PUBLIC_KEY=...                         # Observability
 LANGFUSE_SECRET_KEY=...
 LANGFUSE_HOST=...
@@ -271,6 +401,6 @@ Batch processing runs multiple prompts in parallel for the same agent.
 - **Shared venv**: All repos use `ws-jarvis/.venv/`, not individual venvs
 - **Pyright config**: Set `venvPath = ".."` and `venv = ".venv"` to find the shared venv
 - **Import paths**: Use package names (`autobots_devtools_shared_lib`, `autobots_agents_jarvis`)
-- **Config location**: Jarvis expects configs at `configs/jarvis/` (set via `DYNAGENT_CONFIG_ROOT_DIR`)
+- **Config location**: Jarvis expects configs at `agent_configs/jarvis/` (set via `DYNAGENT_CONFIG_ROOT_DIR`)
 - **Agent handoff**: Use the built-in `handoff` tool to transfer control between agents
 - **Session state**: Tools can access session-scoped state via `runtime.state`

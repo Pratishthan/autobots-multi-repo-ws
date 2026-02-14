@@ -17,21 +17,22 @@ All repos share a **single virtual environment** at `ws-jarvis/.venv/`.
 
 The core concept is a **multi-agent system** where:
 
-1. **Agents** are defined in YAML configs (`configs/jarvis/agents.yaml` for Jarvis)
+1. **Agents** are defined in YAML configs (`agent_configs/jarvis/agents.yaml` for Jarvis)
 2. Each agent has:
    - A **prompt** (markdown file in `configs/jarvis/prompts/`)
    - Optional **output schema** (JSON file in `configs/jarvis/schemas/`)
    - A list of **tools** it can use
+     - Some bootstrap tools are provided by Dynagent - others need to be code for my the use case. E.g.  `get_forecast` in `jarvis_tools.py`
    - Optional **batch processing** capability
-   - An **approach** (e.g., "direct")
-
-3. **Agent handoff** allows agents to transfer control to specialized agents
+3. **Agent handoff** (a Dynagent tool) allows agents to transfer control to specialized agents - this is useful to create agent mesh architecture.
 4. **Tools** are LangChain tools registered in the application code
-5. **State management** through Dynagent state objects passed to tools
+5. **State management** through Dynagent state objects passed to tools - the use case can extend the state object so they can use in their tools.
+6. **Default Agent** one of the agents can be nominated to the "welcome" agent or "coordinator" agent especially useful for UI based use cases.
 
 ### Key Components
 
 **autobots-devtools-shared-lib structure:**
+
 ```
 src/autobots_devtools_shared_lib/
 ├── dynagent/              # Core multi-agent framework
@@ -49,6 +50,7 @@ src/autobots_devtools_shared_lib/
 ```
 
 **autobots-agents-jarvis structure:**
+
 ```
 src/autobots_agents_jarvis/
 ├── tools/                # Custom tools for Jarvis agents
@@ -58,7 +60,7 @@ src/autobots_agents_jarvis/
 ├── models/               # Data models
 └── utils/                # Formatting helpers
 
-configs/jarvis/           # Agent configuration
+agent_configs/jarvis/           # Agent configuration
 ├── agents.yaml           # Agent definitions
 ├── prompts/              # Agent system prompts (.md files)
 └── schemas/              # Output JSON schemas
@@ -115,24 +117,22 @@ make docker-logs-compose # View logs
 ### Adding a New Agent to Jarvis
 
 1. **Define agent in `configs/jarvis/agents.yaml`:**
+
    ```yaml
    agents:
      my_agent:
-       prompt: "03-my-agent"
-       output_schema: "my-output.json"  # optional
+       prompt: "my-new-agent"
+       output_schema: "my-new-agent.json"  # optional
        batch_enabled: false
-       approach: "direct"
        tools:
-         - "my_tool"
-         - "handoff"
-         - "get_agent_list"
+         - "my_tool" # Use case 
+         - "handoff" # Dynagent
+         - "get_agent_list"  # Dynagent
    ```
-
-2. **Create prompt** at `configs/jarvis/prompts/03-my-agent.md`
-
-3. **Create output schema** (if needed) at `configs/jarvis/schemas/my-output.json`
-
+2. **Create prompt** at `configs/jarvis/prompts/my-new-agent.md`
+3. **Create output schema** (if needed) at `configs/jarvis/schemas/my-new-agent.json`
 4. **Implement tools** in `src/autobots_agents_jarvis/tools/jarvis_tools.py`:
+
    ```python
    @tool
    def my_tool(runtime: ToolRuntime[None, Dynagent], param: str) -> str:
@@ -141,14 +141,13 @@ make docker-logs-compose # View logs
        # Implementation
        return "result"
    ```
-
 5. **Register tools** in the `register_jarvis_tools()` function
-
 6. **Add tests** in `tests/unit/` or `tests/integration/`
 
 ### Tool Implementation Pattern
 
 Tools receive a `ToolRuntime[None, Dynagent]` which provides:
+
 - `runtime.state`: Access to Dynagent state (session_id, user context, etc.)
 - State is shared across agent handoffs within a session
 
@@ -157,9 +156,11 @@ Tools receive a `ToolRuntime[None, Dynagent]` which provides:
 ### Environment Variables
 
 Create `.env` in `autobots-agents-jarvis/`:
+
 ```bash
 # Required
 GOOGLE_API_KEY=your-api-key                     # For Gemini LLM
+ANTHROPIC_API_KEY=your-api-key                  # For Claude Sonnet LLM
 
 # Optional
 DYNAGENT_CONFIG_ROOT_DIR=configs/jarvis         # Agent config location
@@ -172,7 +173,7 @@ OAUTH_GITHUB_CLIENT_SECRET=...
 
 ### Python Environment
 
-- **Python version**: 3.12+ (required)
+- **Python version**: 3.12 (preferred) or 3.13 (experimental)
 - **Formatter**: Ruff (line length: 100)
 - **Linter**: Ruff with strict rules
 - **Type checker**: Pyright (basic mode)
@@ -235,6 +236,7 @@ make test                                   # With coverage
 ## Pre-commit Hooks
 
 Both repos have pre-commit hooks that run automatically:
+
 - Ruff formatting and linting
 - Pyright type checking
 - Conventional commit message validation

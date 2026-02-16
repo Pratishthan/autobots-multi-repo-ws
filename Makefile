@@ -10,7 +10,7 @@ PYTHON_BIN := $(BIN)/python
 PIP := $(BIN)/pip
 
 # List your repo directories here as you add them
-REPOS := autobots-devtools-shared-lib autobots-agents-jarvis
+REPOS := autobots-devtools-shared-lib autobots-agents-pay
 # Example: REPOS := repo1 repo2 repo3
 
 help:
@@ -99,7 +99,7 @@ clean:
 	@echo "Cleanup complete!"
 
 sanity:
-	./autobots-agents-jarvis/sbin/sanity_test.sh
+	./autobots-agents-pay/sbin/sanity_test.sh
 
 test: setup
 	@echo "Running tests from all repos..."

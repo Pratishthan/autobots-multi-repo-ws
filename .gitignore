@@ -4,3 +4,5 @@
 data/
 .coverage
 .env*
+canvas
+autobots-agents-mer

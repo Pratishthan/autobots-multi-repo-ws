@@ -1,0 +1,14 @@
+<clickhouse>
+    <logger>
+        <log>click/data/clickhouse.log</log>
+        <errorlog>click/data/clickhouse-error.log</errorlog>
+        <level>information</level>
+    </logger>
+
+    <path>click/data/</path>
+    <tmp_path>click/data/tmp/</tmp_path>
+    <user_files_path>click/data/user_files/</user_files_path>
+    <format_schema_path>click/data/format_schemas/</format_schema_path>
+
+    <listen_host>0.0.0.0</listen_host>
+</clickhouse>

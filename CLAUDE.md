@@ -20,6 +20,21 @@ Jarvis demonstrates **three independent business domains** running simultaneousl
 
 Each domain has its own agent configuration, tools, and services, while sharing common utilities.
 
+## Project Philosophy & Design Context
+
+This workspace is guided by principles documented in `dyna-vault/` (an Obsidian vault).
+Before proposing architectural decisions or new features, read `dyna-vault/README.md` for:
+
+- **Non-intrusive**: Solutions must not change existing developer workflows
+- **Design First**: All significant work starts with a Low-Level Design (LLD) document
+
+Key vault locations:
+- `dyna-vault/projects/mer/` — MER project notes (Nurture pipeline, LLD specs)
+- `dyna-vault/designs/` — Architecture & design docs
+- `dyna-vault/designs/templates/` — Templates for new design docs and decisions
+
+When creating new designs or decisions, use the templates in `dyna-vault/designs/templates/`.
+
 ## Architecture
 
 ### Dynagent Framework

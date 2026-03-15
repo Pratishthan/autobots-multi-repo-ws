@@ -6,4 +6,4 @@ data/
 .env*
 canvas
 releases/
-.claude/mcp.json
+.mcp.json

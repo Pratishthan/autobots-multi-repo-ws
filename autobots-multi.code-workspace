@@ -23,6 +23,10 @@
     {
       "name": "canvas",
       "path": "canvas"
+    },
+    {
+      "name": "dyna-vault",
+      "path": "dyna-vault"
     }
   ],
   "settings": {
@@ -39,6 +43,7 @@
       "autobots-agents-mer": true,
       "autobots-agents-pay": true,
       "canvas": true,
+      "dyna-vault": true,
     },
     "python.testing.pytestEnabled": true,
     "python.testing.unittestEnabled": false,

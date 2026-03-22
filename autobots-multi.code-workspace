@@ -23,10 +23,6 @@
     {
       "name": "canvas",
       "path": "canvas"
-    },
-    {
-      "name": "dyna-vault",
-      "path": "dyna-vault"
     }
   ],
   "settings": {

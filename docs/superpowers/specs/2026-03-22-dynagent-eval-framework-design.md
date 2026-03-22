@@ -66,15 +66,17 @@ eval:
         - llm_judge:
             criteria: "Response contains a valid list of domain models extracted from the LLD"
             threshold: 0.8
+            on_judge_error: warn  # warn (default) or fail
 
   retry:
     count: 2
     only_for: ["llm_judge", "trajectory_quality"]
 
   cost:
-    max_turns: 3
     track: true
 ```
+
+`cost.max_turns` is only applicable to goal-based mode (caps the conversation loop). In linear mode, the number of turns is determined by the `turns` list.
 
 ### 5.2 Goal-Based Mode (conversational agents)
 
@@ -646,7 +648,7 @@ jobs:
         run: make eval-smoke
       - name: Run full evals
         if: github.event.pull_request.labels.*.name == 'run-full-evals'
-        run: make eval --eval-cost-report=reports/eval_cost.json
+        run: make eval-deep
       - name: Upload cost report
         if: always()
         uses: actions/upload-artifact@v4

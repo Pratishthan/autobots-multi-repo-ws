@@ -1,528 +1,121 @@
-# CLAUDE.md / AGENTS.md
+# CLAUDE.md
 
-This file provides guidance to AI coding agents (Cursor, Claude Code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Repository Overview
+## Project Overview
 
-This is a **Python multi-repo workspace** (`ws-jarvis`) containing two main repositories that work together:
+Python monorepo workspace with 4 repos sharing a **single venv** at `ws-autobots/.venv/`:
 
-- **autobots-devtools-shared-lib**: Core framework library providing the Dynagent multi-agent system
-- **autobots-agents-jarvis**: Demo application showcasing Dynagent framework with **multi-domain multi-agent architecture**
+| Repo | Purpose | Version |
+|------|---------|---------|
+| `autobots-devtools-shared-lib` | Dynagent multi-agent framework (core library) | 0.4.0 |
+| `autobots-agents-jarvis` | Demo app: Concierge, Customer Support, Sales domains | 0.1.0 |
+| `autobots-agents-mer` | SDLC automation: Designer, Nurture domains | 0.2.1 |
+| `autobots-agents-pay` | Knowledge Base Extractor (KBE) | 0.1.0 |
 
-All repos share a **single virtual environment** at `ws-jarvis/.venv/`.
+Domain-specific guidance lives in `autobots-agents-mer/CLAUDE.md` and `autobots-agents-pay/CLAUDE.md`.
 
-### Multi-Domain Architecture
+## Design Philosophy
 
-Jarvis demonstrates **three independent business domains** running simultaneously:
-- **Jarvis** (port 2337) - General assistant with jokes and weather
-- **Customer Support** (port 1338) - Ticket management and knowledge base
-- **Sales** (port 1339) - Lead qualification and product recommendations
-
-Each domain has its own agent configuration, tools, and services, while sharing common utilities.
-
-## Project Philosophy & Design Context
-
-This workspace is guided by principles documented in `dyna-vault/` (an Obsidian vault).
-Before proposing architectural decisions or new features, read `dyna-vault/README.md` for:
+@dyna-vault/README.md
 
 - **Non-intrusive**: Solutions must not change existing developer workflows
 - **Design First**: All significant work starts with a Low-Level Design (LLD) document
+- Design templates: `dyna-vault/designs/templates/`
 
-Key vault locations:
-- `dyna-vault/projects/mer/` — MER project notes (Nurture pipeline, LLD specs)
-- `dyna-vault/designs/` — Architecture & design docs
-- `dyna-vault/designs/templates/` — Templates for new design docs and decisions
+## Commands
 
-When creating new designs or decisions, use the templates in `dyna-vault/designs/templates/`.
-
-## Architecture
-
-### Dynagent Framework
-
-The core concept is a **multi-agent system** where:
-
-1. **Agents** are defined in YAML configs (`agent_configs/jarvis/agents.yaml` for Jarvis)
-2. Each agent has:
-   - A **prompt** (markdown file in `agent_configs/jarvis/prompts/`)
-   - Optional **output schema** (JSON file in `agent_configs/jarvis/schemas/`)
-   - A list of **tools** it can use
-     - Some built-in tools are provided by Dynagent; others must be implemented per use case (e.g. `get_forecast` in `jarvis_tools.py`)
-   - Optional **batch processing** capability
-3. **Agent handoff** (a Dynagent tool) allows agents to transfer control to specialized agents - this is useful to create agent mesh architecture.
-4. **Tools** are LangChain tools registered in the application code
-5. **State management** through Dynagent state objects passed to tools - the use case can extend the state object so they can use in their tools.
-6. **Default Agent** one of the agents can be nominated to the "welcome" agent or "coordinator" agent especially useful for UI based use cases.
-
-### Key Components
-
-**autobots-devtools-shared-lib structure:**
-
-```
-src/autobots_devtools_shared_lib/
-├── dynagent/              # Core multi-agent framework
-│   ├── agents/           # Agent orchestration
-│   ├── config/           # Config loading (YAML)
-│   ├── llm/              # LLM integrations
-│   ├── models/           # State and data models
-│   ├── services/         # Core services (batch, etc.)
-│   ├── tools/            # Framework-level tools (handoff, etc.)
-│   └── ui/               # Chainlit UI integration
-└── common/               # Shared utilities
-    ├── observability/    # Langfuse integration
-    ├── tools/            # Common tool helpers
-    └── utils/            # General utilities
-```
-
-**autobots-agents-jarvis structure (Multi-Domain):**
-
-```
-src/autobots_agents_jarvis/
-├── common/               # SHARED code across ALL domains
-│   ├── tools/           # Shared validation tools (email, phone, URL)
-│   ├── services/        # Shared service patterns
-│   └── utils/           # Shared formatting utilities
-│
-├── domains/             # DOMAIN-SPECIFIC code
-│   ├── jarvis/         # Jarvis domain implementation
-│   │   ├── server.py   # Chainlit server (port 2337)
-│   │   ├── tools.py    # Domain tools (jokes, weather)
-│   │   └── services.py # Business logic
-│   ├── customer_support/  # Customer Support domain
-│   │   ├── server.py   # Chainlit server (port 1338)
-│   │   ├── tools.py    # Domain tools (tickets, KB)
-│   │   └── services.py # Business logic
-│   └── sales/          # Sales domain
-│       ├── server.py   # Chainlit server (port 1339)
-│       ├── tools.py    # Domain tools (leads, products)
-│       └── services.py # Business logic
-│
-├── configs/            # Shared settings
-└── models/             # Shared data models
-
-agent_configs/          # Agent configurations PER DOMAIN
-├── jarvis/            # Jarvis agent config
-│   ├── agents.yaml
-│   ├── prompts/
-│   └── schemas/
-├── customer-support/  # Customer Support agent config
-│   ├── agents.yaml
-│   ├── prompts/
-│   └── schemas/
-└── sales/             # Sales agent config
-    ├── agents.yaml
-    ├── prompts/
-    └── schemas/
-```
-
-**Key Pattern**: Each domain in `domains/{name}/` has `server.py`, `tools.py`, `services.py`. Shared code lives in `common/`.
-
-## Dynagent API (for Jarvis and other consumers)
-
-Import from `autobots_devtools_shared_lib.dynagent` for a stable public API.
-
-### Agent creation
-
-```python
-from autobots_devtools_shared_lib.dynagent import create_base_agent
-
-def create_base_agent(
-    checkpointer: Any = None,
-    sync_mode: bool = False,
-    initial_agent_name: str | None = None,
-) -> CompiledStateGraph:
-    """
-    Args:
-        checkpointer: LangGraph checkpointer (default: InMemorySaver).
-        sync_mode: Use sync middleware (for batch). False for UI streaming.
-        initial_agent_name: Starting agent (default: agent with is_default: true in agents.yaml).
-    Returns:
-        Configured LangGraph agent (CompiledStateGraph).
-    """
-```
-
-### Agent invocation (sync / async)
-
-```python
-from autobots_devtools_shared_lib.dynagent import invoke_agent, ainvoke_agent
-
-def invoke_agent(
-    agent_name: str,
-    input_state: dict[str, Any],
-    config: RunnableConfig,
-    enable_tracing: bool = True,
-    trace_metadata: TraceMetadata | None = None,
-) -> dict[str, Any]:
-    """Synchronously invoke agent. Returns final state (messages, structured_response, etc.)."""
-
-async def ainvoke_agent(
-    agent_name: str,
-    input_state: dict[str, Any],
-    config: RunnableConfig,
-    enable_tracing: bool = True,
-    trace_metadata: TraceMetadata | None = None,
-) -> dict[str, Any]:
-    """Asynchronously invoke agent. Returns final state dict."""
-```
-
-`input_state` must include at least `"messages"`; optionally `session_id`, `agent_name`, `user_name`, etc.
-
-### Batch processing
-
-```python
-from autobots_devtools_shared_lib.dynagent import batch_invoker, BatchResult, RecordResult
-
-def batch_invoker(
-    agent_name: str,
-    records: list[str],
-    callbacks: list[Any] | None = None,
-    enable_tracing: bool = True,
-    trace_metadata: TraceMetadata | None = None,
-) -> BatchResult:
-    """Run prompts in parallel. Agent must have batch_enabled: true in agents.yaml."""
-
-@dataclass
-class RecordResult:
-    index: int
-    success: bool
-    output: str | None = None
-    error: str | None = None
-
-@dataclass
-class BatchResult:
-    agent_name: str
-    total: int
-    results: list[RecordResult]
-    # .successes, .failures properties
-```
-
-### Tool registration
-
-```python
-from autobots_devtools_shared_lib.dynagent import register_usecase_tools
-
-def register_usecase_tools(tools: list[Any]) -> None:
-    """Register use-case tools. Call once at app startup before create_base_agent."""
-```
-
-### Config helpers
-
-```python
-from autobots_devtools_shared_lib.dynagent import get_batch_enabled_agents
-
-def get_batch_enabled_agents() -> list[str]:
-    """Return agent names with batch_enabled=True."""
-```
-
-### UI streaming (Chainlit)
-
-```python
-from autobots_devtools_shared_lib.dynagent.ui import stream_agent_events, structured_to_markdown
-
-async def stream_agent_events(
-    agent: CompiledStateGraph,
-    input_state: dict[str, Any],
-    config: RunnableConfig,
-    on_structured_output: Callable[[dict[str, Any], str | None], str] | None = None,
-    enable_tracing: bool = True,
-    trace_metadata: TraceMetadata | None = None,
-) -> None:
-    """Stream agent events to Chainlit UI. Handles tokens, tool steps, structured output."""
-
-def structured_to_markdown(data: dict[str, Any], title: str = "Response") -> str:
-    """Convert structured output dict to Markdown."""
-```
-
-### Built-in tools (available to all agents)
-
-- `handoff(runtime: ToolRuntime[None, Dynagent], next_agent: str) -> Command` — Transfer to another agent
-- `get_agent_list() -> str` — Return comma-separated list of agent names
-- `output_format_converter_tool`, `get_context`, `set_context`, `update_context`, `clear_context`
-- `read_file_tool`, `write_file_tool`, `list_files_tool`, `move_file_tool`, `create_download_link_tool`, `get_disk_usage_tool`
-
-### Models
-
-- `Dynagent`: LangGraph state schema (messages, agent_name, session_id, structured_response, etc.)
-- `TraceMetadata`: session_id, app_name, user_id, tags — for Langfuse observability
-
-## Development Commands
-
-### Workspace-level (run from `ws-jarvis/`)
+### Workspace-level (from `ws-autobots/`)
 
 ```bash
-# Setup
-make setup              # Create shared venv, install pre-commit hooks
-make install            # Install all dependencies from both repos
-make install-dev        # Install with dev dependencies
-
-# Quality checks (runs across all repos)
-make format             # Format with ruff
-make lint               # Lint with ruff
-make type-check         # Type check with pyright
-make test               # Run all tests
-make all-checks         # Run format check, lint, type-check, test
-
-# Maintenance
-make clean              # Remove venv and cache files
-make update-deps        # Update all dependencies
+make setup          # Create shared venv + install pre-commit hooks
+make install-dev    # Install all repos with dev deps
+make test           # Run all tests
+make lint           # ruff check all repos
+make format         # ruff format all repos
+make type-check     # pyright all repos
+make all-checks     # format-check + lint + type-check + test
 ```
 
-### Repo-specific (run from `autobots-agents-jarvis/` or `autobots-devtools-shared-lib/`)
+### Per-repo (from inside any repo)
 
 ```bash
-# Testing
-make test                                    # Run tests with coverage
-make test-fast                              # Run tests without coverage (faster)
-make test-one TEST=tests/unit/test_file.py::test_func  # Run specific test
-
-# Code quality
-make format             # Format code
-make lint               # Lint with auto-fix
-make check-format       # Check formatting without modifying
-make type-check         # Run pyright
-
-# Domain-specific (run from autobots-agents-jarvis/)
-make chainlit-dev                  # Run Jarvis UI (port 2337)
-make chainlit-customer-support     # Run Customer Support UI (port 1338)
-make chainlit-sales                # Run Sales UI (port 1339)
-make chainlit-all                  # Run all domains simultaneously
-
-# Docker (Jarvis only)
-make docker-build       # Build Docker image
-make docker-up          # Start with docker-compose
-make docker-down        # Stop docker-compose services
-make docker-logs-compose # View logs
+make test                                    # pytest with coverage
+make test-fast                               # pytest without coverage, stop on first failure
+make test-one TEST=tests/unit/test_foo.py::test_bar  # single test
+make format                                  # ruff format
+make lint                                    # ruff check --fix
+make type-check                              # pyright
+make check-format                            # ruff format --check + ruff check
 ```
 
-## Working with Multi-Domain Architecture
+## Gotchas
 
-### Adding a New Domain
+- **Shared venv**: All repos use `../.venv` (workspace root), not individual venvs. Activate with `source .venv/bin/activate` from workspace root.
+- **Pre-commit hooks**: Commit from **inside each repo** (not workspace root). Hooks run ruff + pyright + pytest + poetry check.
+- **Pyright config**: Must use `venvPath = ".."` and `venv = ".venv"` for monorepo mode. Some repos have this commented out — check if pyright fails.
+- **Local path dependencies**: Jarvis and MER have `develop = true` path dep on shared-lib in pyproject.toml. Pay has it commented out.
+- **DYNAGENT_CONFIG_ROOT_DIR**: Must be set in `.env` per domain before `create_base_agent()`. Different per domain: `agent_configs/concierge`, `agent_configs/nurture`, `agent_configs/demo`, etc.
+- **Docker monorepo build**: Use `Dockerfile.monorepo` (not `Dockerfile`) to resolve local path deps.
 
-To add a fourth domain (e.g., "HR"):
+## Code Style
 
-1. **Create domain directory structure:**
-   ```bash
-   mkdir -p agent_configs/hr/{prompts,schemas}
-   mkdir -p src/autobots_agents_jarvis/domains/hr
-   ```
-
-2. **Create agent config** at `agent_configs/hr/agents.yaml`
-3. **Create prompts** in `agent_configs/hr/prompts/*.md`
-4. **Create schemas** (if needed) in `agent_configs/hr/schemas/*.json`
-5. **Implement domain code**:
-   - `domains/hr/services.py` - Business logic
-   - `domains/hr/tools.py` - LangChain @tool wrappers + `register_hr_tools()`
-   - `domains/hr/server.py` - Chainlit server (copy from another domain, update APP_NAME and port)
-6. **Create run script** at `sbin/run_hr.sh` with unique port (e.g., 1340)
-7. **Update Makefile** with `chainlit-hr` target
-8. **Optionally use shared tools** by calling `register_validation_tools()` in server.py
-
-### Shared vs Domain-Specific Code
-
-**When to use `common/`**:
-- Code that 2+ domains need (validation, formatting, base classes)
-- Generic utilities with no business logic
-
-**When to use `domains/{name}/`**:
-- Code specific to one business domain
-- Domain-specific tools, services, models
-- Domain-specific business logic
-
-**Example**:
-```python
-# domains/customer_support/server.py
-from autobots_agents_jarvis.common.tools.validation_tools import register_validation_tools  # SHARED
-from autobots_agents_jarvis.domains.customer_support.tools import register_customer_support_tools  # DOMAIN-SPECIFIC
-
-register_validation_tools()  # Opt-in to shared tools
-register_customer_support_tools()  # Register domain tools
-```
-
-### Running Multiple Domains
-
-```bash
-# Run all domains simultaneously
-make chainlit-all  # or: ./sbin/run_all_domains.sh
-
-# Run individual domains
-make chainlit-dev                  # Jarvis (2337)
-make chainlit-customer-support     # Customer Support (1338)
-make chainlit-sales                # Sales (1339)
-```
-
-## Working with Agents
-
-### Adding a New Agent to an Existing Domain (e.g., Jarvis)
-
-1. **Define agent in `agent_configs/jarvis/agents.yaml`:**
-
-   ```yaml
-   agents:
-     my_agent:
-       prompt: "my-new-agent"
-       output_schema: "my-new-agent.json" # optional
-       batch_enabled: false
-       tools:
-         - "my_tool" # Use case
-         - "handoff" # Dynagent
-         - "get_agent_list" # Dynagent
-   ```
-
-2. **Create prompt** at `agent_configs/jarvis/prompts/my-new-agent.md`
-3. **Create output schema** (if needed) at `agent_configs/jarvis/schemas/my-new-agent.json`
-4. **Implement tools** in `src/autobots_agents_jarvis/domains/jarvis/tools.py`:
-
-   ```python
-   @tool
-   def my_tool(runtime: ToolRuntime[None, Dynagent], param: str) -> str:
-       """Tool description for the LLM."""
-       session_id = runtime.state.get("session_id", "default")
-       # Implementation
-       return "result"
-   ```
-
-5. **Register tools** in the `register_jarvis_tools()` function
-6. **Add tests** in `tests/unit/` or `tests/integration/`
-
-### Tool Implementation Pattern
-
-Tools receive a `ToolRuntime[None, Dynagent]` which provides:
-
-- `runtime.state`: Access to Dynagent state (session_id, user context, etc.)
-- State is shared across agent handoffs within a session
-
-## Configuration
-
-### Environment Variables
-
-Create `.env` in `autobots-agents-jarvis/`:
-
-```bash
-# Required
-GOOGLE_API_KEY=your-api-key                     # For Gemini LLM
-ANTHROPIC_API_KEY=your-api-key                  # For Claude Sonnet LLM
-
-# Optional
-DYNAGENT_CONFIG_ROOT_DIR=agent_configs/jarvis   # Agent config location
-LANGFUSE_PUBLIC_KEY=...                         # Observability
-LANGFUSE_SECRET_KEY=...
-LANGFUSE_HOST=...
-OAUTH_GITHUB_CLIENT_ID=...                      # GitHub OAuth
-OAUTH_GITHUB_CLIENT_SECRET=...
-```
-
-### Python Environment
-
-- **Python version**: 3.12 (preferred) or 3.13 (experimental)
-- **Formatter**: Ruff (line length: 100)
-- **Linter**: Ruff with strict rules
+- **Formatter/Linter**: Ruff, line-length 100, double quotes
 - **Type checker**: Pyright (basic mode)
-- **Test framework**: pytest with coverage
+- **Python**: 3.12+
+- **Ruff rules**: E, W, F, I, B, C4, UP, ARG, SIM, S, TCH, PTH, RET, TRY, PERF, RUF (ignore S101, E501, TRY003)
 
-## Local Development Path Dependency
+## Dynagent Agent Pattern
 
-When developing both repos together, `autobots-agents-jarvis` uses a **local path dependency** to `autobots-devtools-shared-lib`:
+Agents are configured in YAML with prompts and optional output schemas:
 
-- Defined in `autobots-agents-jarvis/pyproject.toml`:
-  ```toml
-  [tool.poetry.dependencies]
-  autobots-devtools-shared-lib = {path = "../autobots-devtools-shared-lib", develop = true}
-  ```
-- This allows immediate testing of shared-lib changes without publishing to PyPI
-- For production, update to versioned PyPI dependency
-
-## Running Jarvis
-
-```bash
-cd autobots-agents-jarvis
-
-# Ensure .env is configured with GOOGLE_API_KEY
-cp .env.example .env
-# Edit .env
-
-# Run the Chainlit UI
-make chainlit-dev
-
-# Or use the run script
-./sbin/run_jarvis.sh
-
-# Or directly
-chainlit run src/autobots_agents_jarvis/servers/jarvis_ui.py --port 1337
+```
+agent_configs/<domain>/
+├── agents.yaml          # Agent definitions
+├── prompts/*.md         # Agent prompts
+└── schemas/*.json       # Output schemas (optional)
 ```
 
-Access at http://localhost:1337
+Each agent in `agents.yaml`:
+```yaml
+agents:
+  my_agent:
+    prompt: "my-agent"              # → prompts/my-agent.md
+    output_schema: "my-agent.json"  # → schemas/my-agent.json (optional)
+    batch_enabled: false
+    tools: ["my_tool", "handoff", "get_agent_list"]
+```
+
+### Tool Pattern
+
+Tools use `ToolRuntime[None, Dynagent]` for state access:
+
+```python
+@tool
+def my_tool(runtime: ToolRuntime[None, Dynagent], param: str) -> str:
+    """Tool description for the LLM."""
+    session_id = runtime.state.get("session_id", "default")
+    return "result"
+```
+
+Register tools once at startup via `register_usecase_tools(tools)` before `create_base_agent()`.
+
+### Domain Code Pattern
+
+Each domain follows: `domains/{name}/server.py`, `tools.py`, `services.py`. Shared code in `common/`.
+
+## Key Imports
+
+```python
+from autobots_devtools_shared_lib.dynagent import (
+    create_base_agent, invoke_agent, ainvoke_agent,
+    batch_invoker, register_usecase_tools, get_batch_enabled_agents,
+)
+from autobots_devtools_shared_lib.dynagent.ui import stream_agent_events
+```
 
 ## Testing
 
-### Test Organization
-
-- **Unit tests** (`tests/unit/`): Test individual functions/services
-- **Integration tests** (`tests/integration/`): Test agent interactions
-- Tests use pytest with async support (`asyncio_mode = "auto"`)
-
-### Running Tests
-
-```bash
-# From workspace root (tests all repos)
-make test
-
-# From specific repo (e.g., jarvis)
-cd autobots-agents-jarvis
-make test-fast                              # Quick iteration
-make test-one TEST=tests/unit/test_joke_service.py::test_get_joke  # Specific test
-make test                                   # With coverage
-```
-
-## Pre-commit Hooks
-
-Both repos have pre-commit hooks that run automatically on `git commit`:
-
-- Ruff formatting and linting
-- Pyright type checking
-- Pytest (unit tests)
-- Poetry check
-
-**Hooks only run when you commit from inside each repo** (`autobots-agents-jarvis/` or `autobots-devtools-shared-lib/`), not from the workspace root (`ws-jarvis/`).
-
-```bash
-# Install hooks (done automatically by make setup)
-make install-hooks
-
-# Run manually (from the repo you are committing)
-make pre-commit
-```
-
-### If git commit fails (pre-commit / hooks)
-
-1. **Activate the workspace venv** (from `ws-jarvis/`): `source .venv/bin/activate`
-2. **Reinstall hooks** so they use the venv’s pre-commit:  
-   `cd autobots-agents-jarvis && make install-hooks` (or the repo you’re committing in)
-3. **Run hooks yourself** before committing: `make pre-commit` in that repo
-4. To commit without running hooks once: `git commit --no-verify` (use only if you’ll fix issues right after)
-
-## Batch Processing
-
-Jarvis supports **batch processing** for agents with `batch_enabled: true`:
-
-```python
-from autobots_agents_jarvis.services.jarvis_batch import jarvis_batch
-
-prompts = ["Tell me a joke", "Another joke", "One more"]
-result = jarvis_batch("joke_agent", prompts)
-
-for record in result.results:
-    if record.success:
-        print(f"Record {record.index}: {record.output}")
-```
-
-Batch processing runs multiple prompts in parallel for the same agent.
-
-## Important Notes
-
-- **Activate venv first**: Always activate the workspace venv before running any Python command (e.g. `source .venv/bin/activate` from `ws-jarvis/`), so that scripts, tests, and tools use the correct environment.
-- **Git commit / pre-commit**: Commit from inside `autobots-agents-jarvis/` or `autobots-devtools-shared-lib/` (not the workspace root). If hooks fail, activate venv then run `make install-hooks` and `make pre-commit` in that repo (see [Pre-commit Hooks](#pre-commit-hooks)).
-- **Shared venv**: All repos use `ws-jarvis/.venv/`, not individual venvs
-- **Pyright config**: Set `venvPath = ".."` and `venv = ".venv"` to find the shared venv
-- **Import paths**: Use package names (`autobots_devtools_shared_lib`, `autobots_agents_jarvis`)
-- **Config location**: Jarvis expects configs at `agent_configs/jarvis/` (set via `DYNAGENT_CONFIG_ROOT_DIR`)
-- **Agent handoff**: Use the built-in `handoff` tool to transfer control between agents
-- **Session state**: Tools can access session-scoped state via `runtime.state`
+- pytest with `asyncio_mode = "auto"` — async tests work out of the box
+- Markers: `unit`, `integration`, `slow`, `sanity`
+- Coverage reports to `htmlcov/`

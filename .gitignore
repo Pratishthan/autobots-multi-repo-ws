@@ -8,3 +8,5 @@ canvas
 releases/
 .mcp.json
 dyna-vault
+.claude/last30days.env
+.vscode/launch.json

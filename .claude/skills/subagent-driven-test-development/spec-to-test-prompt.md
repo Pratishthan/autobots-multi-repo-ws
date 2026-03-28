@@ -44,14 +44,14 @@ Task tool (general-purpose):
 
     Extract from the spec's metadata table:
     - **Feature** (e.g., "DYN-X: Guardrails & Gates")
-    - **Repository**
-    - **Version**
+    - **Design ref** (path to design doc)
+    - **Plan ref** (path to implementation plan)
 
     Use these for traceability comments at the top of each generated test file:
     ```
     # Feature: <Feature>
-    # Spec Version: <Version>
-    # Repository: <Repository>
+    # Design: <Design ref>
+    # Plan: <Plan ref>
     ```
     Adapt comment syntax to the project's language.
 

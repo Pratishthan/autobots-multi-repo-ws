@@ -11,6 +11,17 @@ Execute plan by dispatching fresh subagent per task, with two-stage review after
 
 **Core principle:** Fresh subagent per task + two-stage review (spec then quality) = high quality, fast iteration
 
+## Precondition: Scenario Spec
+
+Before starting implementation, check if a scenario spec exists for this feature:
+
+> Look for a file matching `docs/superpowers/specs/*-test-scenarios.md` related to this feature.
+>
+> - **If found:** Proceed. The scenario spec defines the acceptance criteria — tests should cover these scenarios.
+> - **If not found:** Ask the user: "No scenario spec found for this feature. Would you like to author one first with `superpowers:writing-test-scenario-specs`, or proceed without one?"
+>
+> This is a soft gate — the user can proceed without a spec for existing features or quick fixes.
+
 ## When to Use
 
 ```dot

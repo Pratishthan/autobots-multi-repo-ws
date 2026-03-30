@@ -124,6 +124,17 @@ After writing the complete plan:
 - If loop exceeds 3 iterations, surface to human for guidance
 - Reviewers are advisory — explain disagreements if you believe feedback is incorrect
 
+## Scenario Spec Handoff
+
+After the plan is approved but before execution, recommend the user author acceptance criteria:
+
+> **Next step:** Author your test scenario spec with `superpowers:writing-test-scenario-specs`. This creates human-authored acceptance criteria that define "done" for each feature in the plan.
+>
+> **Design doc:** `[path]`
+> **Implementation plan:** `[path]`
+
+If the user chooses to skip, proceed to execution handoff as normal. The scenario spec is recommended but not mandatory at the plan stage — `subagent-driven-development` has its own precondition check.
+
 ## Execution Handoff
 
 After saving the plan, offer execution choice:

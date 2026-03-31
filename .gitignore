@@ -10,3 +10,4 @@ releases/
 dyna-vault
 .claude/last30days.env
 .vscode/launch.json
+.worktrees/

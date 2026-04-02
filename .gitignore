@@ -10,3 +10,11 @@ releases/
 dyna-vault
 .claude/last30days.env
 .vscode/launch.json
+
+# Nested repos — never track as submodules
+autobots-agents-bro/
+autobots-agents-jarvis/
+autobots-agents-mer/
+autobots-agents-pay/
+autobots-agents-template/
+autobots-devtools-shared-lib/

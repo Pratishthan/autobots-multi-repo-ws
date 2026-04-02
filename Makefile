@@ -1,7 +1,7 @@
 .PHONY: help setup clean install install-dev install-hooks test sanity lint format check-format type-check all-checks update-deps
 
 # Python version (customize as needed)
-PYTHON := python3.12
+PYTHON := python3.13
 # Use absolute path for venv so it works from subdirectories
 ROOT_DIR := $(shell pwd)
 VENV := $(ROOT_DIR)/.venv

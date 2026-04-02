@@ -21,6 +21,10 @@
       "path": "autobots-agents-pay"
     },
     {
+      "name": "autobots-docs",
+      "path": "autobots-docs"
+    },
+    {
       "name": "canvas",
       "path": "canvas"
     }

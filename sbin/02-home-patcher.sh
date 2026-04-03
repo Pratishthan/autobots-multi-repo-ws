@@ -6,6 +6,10 @@
 #   REPO_NAME   - Repo directory relative to workspace root (e.g., autobots-agents-pay)
 #   PATCH_FILE  - Patch filename inside releases/ (e.g., autobots-agents-pay-hotfix.patch)
 #   TAG_NAME    - Optional tag (e.g., v20260304-2); defaults to v$(date +%Y%m%d-%H%M)
+# ================================
+# sh sbin/02-home-patcher.sh autobots-agents-mer patch_main_to_develop.patch
+# sh sbin/02-home-patcher.sh autobots-agents-pay Pay-patch_main_to_develop.patch
+# ================================
 
 set -euo pipefail
 

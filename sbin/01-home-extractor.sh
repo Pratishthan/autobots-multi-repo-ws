@@ -5,7 +5,10 @@
 # Usage: ./sbin/01-home-extractor.sh <REPO_NAME> [TAG_NAME]
 #   REPO_NAME  - Repo directory relative to workspace root (e.g., autobots-agents-pay)
 #   TAG_NAME   - Optional tag (e.g., v20260304-13); defaults to v$(date +%Y%m%d-%H)
-
+# ==============================================
+# sh sbin/01-home-extractor.sh autobots-agents-mer
+# sh sbin/01-home-extractor.sh autobots-agents-pay
+# ==============================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -42,6 +42,7 @@
       "autobots-agents-jarvis": true,
       "autobots-agents-mer": true,
       "autobots-agents-pay": true,
+      "autobots-docs": true,
       "canvas": true,
       "dyna-vault": true,
     },

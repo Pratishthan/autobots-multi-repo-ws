@@ -1,4 +1,4 @@
-# dyna-render: Deterministic JSON → Markdown Renderer
+# dynadoc: Deterministic JSON → Markdown Renderer
 
 **Status:** Draft
 **Date:** 2026-04-27
@@ -32,7 +32,7 @@ Today, MER's `lld-consolidator` agent uses an LLM to fold ~20 JSON directive fil
 |---|---|---|
 | 1 | LLM in the loop? | No. Purely deterministic. Any prose stitching is a separate agent. |
 | 2 | Where do templates live? | Per-domain, co-located with schemas (`agent_configs/<domain>/templates/`). Shared-lib provides only the engine. |
-| 3 | How are JSON inputs bound to templates? | Explicit YAML manifest per domain (`render.yaml`). |
+| 3 | How are JSON inputs bound to templates? | Explicit YAML manifest per domain (`dynadoc.yaml`). |
 | 4 | Composition shape? | Recursive node tree (leaves and composites are interchangeable; same render function at every depth). |
 | 5 | Render flow? | Two-pass / fragments-as-strings: each leaf renders to a Markdown string; composite parents receive children as pre-rendered strings via `sections.<name>`. |
 | 6 | API surface? | Layer 1 pure core function + a Dynagent tool wrapper. No filesystem convenience wrappers in v1. |
@@ -44,7 +44,7 @@ Today, MER's `lld-consolidator` agent uses an LLM to fold ~20 JSON directive fil
 New module in `autobots-devtools-shared-lib`:
 
 ```
-src/autobots_devtools_shared_lib/dyna_render/
+src/autobots_devtools_shared_lib/dynadoc/
 ├── __init__.py        # public API exports
 ├── engine.py          # render_document() — Layer 1 pure core
 ├── manifest.py        # manifest dataclasses + parser
@@ -55,17 +55,17 @@ src/autobots_devtools_shared_lib/dyna_render/
 Additionally, two new helpers added to the existing `dynagent/agents/agent_config_utils.py` next to `load_prompt` and `load_schema`:
 
 - `load_template(name: str) -> str` — reads `<config_dir>/templates/<name>`
-- `load_render_manifest() -> dict` — reads `<config_dir>/render.yaml`
+- `load_render_manifest() -> dict` — reads `<config_dir>/dynadoc.yaml`
 
 These are not engine parameters; they are shared-lib internals consumed by `render_document`.
 
 ## 5. Public API
 
 ```python
-from autobots_devtools_shared_lib.dyna_render import render_document, RenderResult
+from autobots_devtools_shared_lib.dynadoc import render_document, RenderResult
 
 def render_document(
-    document_name: str,                          # key under `documents` in render.yaml
+    document_name: str,                          # key under `documents` in dynadoc.yaml
     load_json: Callable[[str], dict],            # caller supplies — workspace JSON I/O
     strict: bool = True,
 ) -> RenderResult: ...
@@ -98,7 +98,7 @@ The only caller-supplied loader is `load_json`, because JSON *inputs* are worksp
 A Dynagent tool `render_document_tool` is also exported. Domains register it once with their `load_json`:
 
 ```python
-from autobots_devtools_shared_lib.dyna_render.tool import make_render_document_tool
+from autobots_devtools_shared_lib.dynadoc.tool import make_render_document_tool
 
 register_usecase_tools([
     make_render_document_tool(load_json=mer_load_workspace_json),
@@ -107,7 +107,7 @@ register_usecase_tools([
 
 ## 6. Manifest Format
 
-One YAML file per domain at `agent_configs/<domain>/render.yaml`. Top-level `documents` map; each value is a node tree.
+One YAML file per domain at `agent_configs/<domain>/dynadoc.yaml`. Top-level `documents` map; each value is a node tree.
 
 A **node** is exactly one of:
 
@@ -115,6 +115,8 @@ A **node** is exactly one of:
 - **Composite** — `{ template: <template-name>, children: { <name>: <node>, ... } }`
 
 A node may **not** contain both `json` and `children` — the manifest parser rejects this as a validation error at load time. Recursive: any child can itself be a leaf or a composite. No depth limit.
+
+**Workspace artifacts are leaves-only.** Only leaf nodes reference JSON files; composite nodes are pure structural wrappers whose content comes from their template's static MD plus the rendered children injected via `sections.<name>`. The workspace therefore needs to contain only the leaf JSONs — no intermediate JSON exists or is required.
 
 Example (Designer's LLD):
 
@@ -227,14 +229,14 @@ The engine has no knowledge of filesystems or the file server. Resources split a
 | `prompts/*.md` | domain config dir (`DYNAGENT_CONFIG_ROOT_DIR`) | `load_prompt` *(existing, shared-lib)* |
 | `schemas/*.json` | domain config dir | `load_schema` *(existing, shared-lib)* |
 | `templates/*.md.j2` | domain config dir | `load_template` *(new, shared-lib)* |
-| `render.yaml` | domain config dir | `load_render_manifest` *(new, shared-lib)* |
+| `dynadoc.yaml` | domain config dir | `load_render_manifest` *(new, shared-lib)* |
 | JSON inputs (artifacts) | workspace (file server in MER, local fs in CLI/tests) | caller-supplied `load_json` |
 
 Rationale: templates and the manifest are domain *config* — they ship with the codebase and live next to prompts/schemas. JSON *inputs* are runtime artifacts produced by agents into a workspace, and the workspace backend genuinely varies.
 
 ## 10. Migration: Replacing `lld-consolidator`
 
-1. Add `agent_configs/designer/render.yaml` defining the `lld` document.
+1. Add `agent_configs/designer/dynadoc.yaml` defining the `lld` document.
 2. Add per-section templates under `agent_configs/designer/templates/` (one `.md.j2` per directive currently consumed by `lld-consolidator`, plus the parent `lld.md.j2`).
 3. Designer's `coordinator` agent gains `render_document_tool` (registered with file-server-backed `load_json`) and calls it with `document_name="lld"` instead of handing off to `lld-consolidator`.
 4. Coordinator writes the returned MD via the existing `mer_write_file_tool`. The engine never writes files — output destination is the agent's concern.
@@ -258,7 +260,7 @@ Other domains (Nurture, KBE, Jarvis) adopt incrementally on their own timelines 
 ## 12. Open Questions / Future Extensions
 
 - Sub-document addressing (`render_document("lld.data", ...)`) — natural fit, deferred to v2 once a real use case appears.
-- Custom Jinja filters (e.g. table formatters, anchor slugifiers) — defer until a template needs one; add to `dyna_render/filters.py` then.
+- Custom Jinja filters (e.g. table formatters, anchor slugifiers) — defer until a template needs one; add to `dynadoc/filters.py` then.
 - A fs-backed convenience wrapper (`render_document_from_paths`) — defer; trivial to add when a non-agent caller materializes.
 
 ## 13. Out of Scope (revisit later)

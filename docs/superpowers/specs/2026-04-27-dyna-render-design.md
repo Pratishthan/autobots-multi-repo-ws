@@ -74,7 +74,16 @@ def render_document(
 class RenderResult:
     md: str
     errors: list[RenderError]                    # always present; empty when fully successful
+
+@dataclass
+class RenderError:
+    node_path: str                               # dotted path in the manifest, e.g. "lld.data.models"
+    kind: Literal["missing_json", "missing_template", "undefined_variable"]
+    message: str                                 # human-readable detail
+    cause: Exception | None = None               # original exception, if any
 ```
+
+The Dynagent tool `render_document_tool` returns the rendered MD **as a string** plus a serialized error list. It does not write to the filesystem — the calling agent decides where to persist (e.g. via `mer_write_file_tool`).
 
 `load_template` and `load_render_manifest` are resolved internally from `DYNAGENT_CONFIG_ROOT_DIR`, exactly like `load_prompt` and `load_schema` already are.
 
@@ -100,12 +109,12 @@ register_usecase_tools([
 
 One YAML file per domain at `agent_configs/<domain>/render.yaml`. Top-level `documents` map; each value is a node tree.
 
-A **node** is one of:
+A **node** is exactly one of:
 
 - **Leaf** — `{ json: <relative-workspace-path>, template: <template-name> }`
 - **Composite** — `{ template: <template-name>, children: { <name>: <node>, ... } }`
 
-Recursive: any child can itself be a leaf or a composite. No depth limit.
+A node may **not** contain both `json` and `children` — the manifest parser rejects this as a validation error at load time. Recursive: any child can itself be a leaf or a composite. No depth limit.
 
 Example (Designer's LLD):
 
@@ -155,6 +164,8 @@ def render(node, ctx) -> Fragment:
     ))
 ```
 
+Children of a composite are rendered in **manifest insertion order** (YAML preserves it; the parser must not re-sort). Determinism is a stated goal, so this ordering is part of the contract.
+
 Properties:
 
 - Same render function at any depth. Depth is a property of the manifest, not the engine.
@@ -195,7 +206,7 @@ The `strict` flag on `render_document` controls behavior on missing or malformed
 
 | Condition | `strict=True` | `strict=False` |
 |---|---|---|
-| Missing JSON file | raise `MissingInputError` | fragment = `> _Section pending: <name>_`, error appended to `RenderResult.errors` |
+| Missing JSON file | raise `MissingInputError` | fragment = `> _Section pending: <node_path>_` (where `<node_path>` is the dotted manifest path, e.g. `lld.data.models`), error appended to `RenderResult.errors` |
 | Missing template file | raise `MissingTemplateError` | placeholder fragment, error appended |
 | Jinja `UndefinedError` in template | raise (Jinja `StrictUndefined`) | placeholder fragment, error appended |
 | Malformed JSON (parse failure) | raise | raise (not recoverable; same in both modes) |

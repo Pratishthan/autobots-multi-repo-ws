@@ -8,7 +8,7 @@ Python monorepo workspace with 4 repos sharing a **single venv** at `ws-autobots
 
 | Repo | Purpose | Version |
 |------|---------|---------|
-| `autobots-devtools-shared-lib` | Dynagent multi-agent framework (core library) | 0.4.0 |
+| `autobots-devtools-shared-lib` | Dynagent multi-agent framework (core library) | 0.7.0 |
 | `autobots-agents-jarvis` | Demo app: Concierge, Customer Support, Sales domains | 0.1.0 |
 | `autobots-agents-mer` | SDLC automation: Designer, Nurture domains | 0.2.1 |
 | `autobots-agents-pay` | Knowledge Base Extractor (KBE) | 0.1.0 |

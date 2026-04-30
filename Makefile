@@ -1,7 +1,7 @@
 .PHONY: help setup clean install install-dev install-hooks test sanity lint format check-format type-check all-checks update-deps
 
 # Python version (customize as needed)
-PYTHON := python3.12
+PYTHON := python3.13
 # Use absolute path for venv so it works from subdirectories
 ROOT_DIR := $(shell pwd)
 VENV := $(ROOT_DIR)/.venv
@@ -10,7 +10,7 @@ PYTHON_BIN := $(BIN)/python
 PIP := $(BIN)/pip
 
 # List your repo directories here as you add them
-REPOS := autobots-devtools-shared-lib autobots-agents-jarvis
+REPOS := autobots-devtools-shared-lib autobots-agents-jarvis autobots-agents-mer autobots-agents-pay
 # Example: REPOS := repo1 repo2 repo3
 
 help:
@@ -37,7 +37,7 @@ $(VENV)/bin/activate:
 	$(PYTHON) -m venv $(VENV)
 	$(PIP) install --upgrade pip setuptools wheel
 	@echo "Installing common dev tools..."
-	$(PIP) install black ruff pytest pytest-cov mypy isort pre-commit
+	$(PIP) install ruff pytest pytest-cov pyright pre-commit
 	@echo ""
 	@echo "Installing pre-commit hooks in all repos..."
 	@for repo in $(REPOS); do \
@@ -124,8 +124,8 @@ format: setup
 	@for repo in $(REPOS); do \
 		if [ -d "$$repo" ]; then \
 			echo "Formatting $$repo..."; \
-			$(BIN)/black $$repo; \
-			$(BIN)/isort $$repo; \
+			$(BIN)/ruff format $$repo; \
+			$(BIN)/ruff check --fix $$repo || true; \
 		fi; \
 	done
 
@@ -134,17 +134,17 @@ check-format: setup
 	@for repo in $(REPOS); do \
 		if [ -d "$$repo" ]; then \
 			echo "Checking $$repo..."; \
-			$(BIN)/black --check $$repo || true; \
-			$(BIN)/isort --check-only $$repo || true; \
+			$(BIN)/ruff format --check $$repo || true; \
+			$(BIN)/ruff check $$repo || true; \
 		fi; \
 	done
 
 type-check: setup
 	@echo "Running type checker on all repos..."
 	@for repo in $(REPOS); do \
-		if [ -d "$$repo" ]; then \
+		if [ -d "$$repo/src" ]; then \
 			echo "Type checking $$repo..."; \
-			$(BIN)/mypy $$repo || true; \
+			(cd $$repo && $(BIN)/pyright src/) || true; \
 		fi; \
 	done
 

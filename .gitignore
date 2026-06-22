@@ -19,3 +19,5 @@ autobots-agents-mer/
 autobots-agents-pay/
 autobots-agents-template/
 autobots-devtools-shared-lib/
+# Visual brainstorming companion (local, ephemeral)
+.superpowers/

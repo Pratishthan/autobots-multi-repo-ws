@@ -45,7 +45,10 @@ Rejected alternatives:
 - **C — Unify-later:** treat deepagents as the future single engine and migrate Nurture too.
   Rejected for now: largest scope, unnecessary to ship AMA.
 
-## Verified Compatibility Facts (deepagents 0.6.7)
+## Verified Compatibility Facts
+
+(Signature inspected from the locally installed `deepagents 0.6.7`; target is `0.6.12`, whose
+changelog shows no `create_deep_agent` API changes — re-verify against 0.6.12 in Phase 0.)
 
 - `create_deep_agent(model: str | BaseChatModel, tools, *, system_prompt, middleware=(),
   subagents, skills, memory, permissions, backend, interrupt_on, response_format,
@@ -164,11 +167,28 @@ surface. `invoke_deepagent` / `ainvoke_deepagent` exported next to `invoke_agent
 ## Phase 0 — Dependency / version resolution (BLOCKER)
 
 Installed `deepagents 0.6.7` imports `langgraph.stream.run_stream`, which is absent in the installed
-`langgraph 1.1.3` → deepagents fails to import today. **Nothing else can proceed until this is fixed.**
+`langgraph 1.1.3` → deepagents fails to import today. **Root cause: the langchain stack is too OLD,
+not too new.** deepagents pulls langgraph transitively via langchain; installed `langchain 1.2.13` /
+`langchain-core 1.2.20` sit below deepagents' floor, so the newer langgraph that exposes
+`langgraph.stream` is never installed. Bumping deepagents alone does not fix this — the langchain
+stack must be upgraded. **Nothing else can proceed until this is fixed.**
 
-Phase 0 is a spike to find a compatible `(deepagents, langgraph, langchain)` pin set, update the
-relevant `pyproject.toml` files, and verify the **whole workspace still imports and tests green**
-(Nurture / react engine included). Exact pins are a plan-time investigation, not fixed here.
+**Target pin set (adopt deepagents 0.6.12 — latest; adds Bedrock prompt-caching + a summarization
+media-reference fix):**
+
+| Package | Installed | Required by deepagents 0.6.12 |
+|---|---|---|
+| `deepagents` | 0.6.7 | `==0.6.12` (target) |
+| `langchain` | 1.2.13 | `>=1.3.11,<2.0.0` |
+| `langchain-core` | 1.2.20 | `>=1.4.8,<2.0.0` |
+| `langchain-anthropic` | 1.4.0 | `>=1.4.7,<2.0.0` |
+| `langchain-google-genai` | (installed) | `>=4.2.5,<5.0.0` |
+| `langgraph` | 1.1.3 | (transitive — must resolve to a version exposing `langgraph.stream`) |
+
+Phase 0 work: apply the pins above in the relevant `pyproject.toml` files, resolve the lockfile, and
+verify the **whole workspace still imports and tests green** — in particular the react engine
+(`create_base_agent`, `SummarizationMiddleware`, `inject_agent`) and Nurture, which move from
+langchain 1.2.x → 1.3.x. That minor bump is the primary regression risk to validate.
 
 ## Testing
 

@@ -29,6 +29,13 @@ Phase 0 target). The blog repo's venv holds 0.4.12 with an older API — not the
 blog's `deep-agents-langchain-blog/agent.py` is the target *usage shape* for Phase 1
 (skills + memory + filesystem backend).
 
+**Reference pass:** ChainAgents' `chainagents/runtime/core.py` (TOML-driven deepagents runtime)
+was reviewed as a second reference. Adopted from it: **CompositeBackend path routes**, **named
+model profiles**, and **tool-execution resilience middleware** (see §2–§4b). Explicitly not
+adopted: nested/async subagents, summarization tuning + status events, configurable
+`recursion_limit`, MCP server config, per-provider tool-schema sanitization (dynagent's tool
+registry and backend design cover or defer these).
+
 ## Goal
 
 Phased path to full `create_deep_agent` parity, **config-first**: capabilities are declared in
@@ -42,6 +49,10 @@ Phased path to full `create_deep_agent` parity, **config-first**: capabilities a
   possible later optimization, not scoped here).
 - No per-agent API keys in YAML — secrets stay in `DynagentSettings`/env.
 - No sandbox/`execute` backend support (no `SandboxBackendProtocol` implementation).
+- No nested subagents (subagents owning child subagents) and no async/remote subagents
+  (Agent Protocol) — flat main + one subagent level covers the AMA use case.
+- No summarization tuning/status events, no configurable `recursion_limit`, no MCP server
+  config (reviewed in the ChainAgents pass, deliberately not adopted).
 
 ## Design
 
@@ -51,15 +62,30 @@ Phased path to full `create_deep_agent` parity, **config-first**: capabilities a
 
 ```yaml
 # deep-agents.yaml
+models:                       # NEW — named model profiles (see §2)
+  main:
+    provider: anthropic
+    name: claude-sonnet-4-6
+  researcher:
+    provider: anthropic
+    name: claude-opus-4-8
+    temperature: 0.3
+  cheap-docs:
+    provider: anthropic
+    name: claude-haiku-4-5
+
 default_backend:              # domain-level; applies to main agent + subagents
-  type: fserver               # state (default) | filesystem | fserver
+  type: composite             # state (default) | filesystem | fserver | composite
+  routes:                     # composite-type option (see §3)
+    "/workspace/": {type: fserver}
+    "/memories/": {type: store}          # requires the store= kwarg (escape hatch)
   # root_dir: "${WORKSPACE_ROOT}"   # filesystem-type option, env-interpolated
 
 agents:
   assistant:
     is_default: true          # existing key → designates the MAIN agent
     prompt: "assistant"
-    model: "anthropic:claude-sonnet-4-6"   # NEW, optional → per-agent model
+    model: main               # NEW, optional → profile name or inline "provider:name"
     tools: ["internet_search"]
     skills: ["skills/"]       # NEW → create_deep_agent(skills=...)
     memory: ["AGENTS.md"]     # NEW → create_deep_agent(memory=...)
@@ -72,53 +98,70 @@ agents:
   researcher:                 # non-default roster entry → subagent (P3)
     prompt: "researcher"
     description: "Deep research on a topic"   # NEW — required for subagents
-    model: "anthropic:claude-opus-4-8"
+    model: researcher
     tools: ["internet_search"]
     skills: ["skills/research/"]
 
   code-doc:
     prompt: "code-doc"
     description: "Writes code documentation"
-    model: "anthropic:claude-haiku-4-5"       # cheap model for doc generation
+    model: cheap-docs         # cheap model for doc generation
 ```
 
-- **`AgentConfig`** new fields: `model: str | dict | None`, `skills: list[str]`,
+- **`AgentConfig`** new fields: `model: str | None`, `skills: list[str]`,
   `memory: list[str]`, `interrupt_on: dict[str, bool | dict]`, `permissions: list`,
   `description: str | None`.
-- **`load_agents_config`** additionally parses the top-level `default_backend` block.
+- **`load_agents_config`** additionally parses the top-level `default_backend` and `models`
+  blocks.
 - **`AgentMeta`** gains `model_map`, `skills_map`, `memory_map`, `interrupt_map`,
-  `permissions_map`, `description_map`, `backend_config` — built like the existing maps.
+  `permissions_map`, `description_map`, `backend_config`, `model_profiles` — built like the
+  existing maps.
 - **Env interpolation:** `${VAR}` in string config values is expanded at load time
   (`string.Template`-style), e.g. `root_dir: "${WORKSPACE_ROOT}"`.
 
-### 2. Per-agent models — `lm()` extension
+### 2. Per-agent models — named profiles + `lm()` extension
 
+- Top-level `models:` block defines **named profiles**: `{provider, name, temperature}` per
+  profile, all fields optional — omitted fields fall back to `DynagentSettings` values. API
+  keys never appear in YAML; they stay in settings/env.
+- Per-agent `model:` accepts:
+  - a **profile name** (`model: cheap-docs`) — looked up in `model_profiles`;
+  - an inline `"provider:model"` string (deepagents convention) for one-off use;
+  - a bare `"model-name"` → settings-configured provider with that model.
+  Lookup order: profile name first, then inline parse. A `model:` value that is neither a
+  known profile nor parseable fails fast at config load.
 - `lm()` becomes `lm(model: str | None = None, provider: str | None = None,
   temperature: float | None = None)`; every argument defaults to the current settings value, so
-  all existing callers are untouched. API keys still come from settings only.
-- YAML `model:` accepts:
-  - `"provider:model"` string (deepagents convention), e.g. `"anthropic:claude-haiku-4-5"`;
-  - bare `"model-name"` → settings-configured provider with that model;
-  - dict form `{name: "...", provider: "...", temperature: 0.2}` for temperature overrides.
+  all existing callers are untouched.
 - Resolution lives in a helper (`resolve_agent_model(meta, agent_name) -> BaseChatModel`) that
-  falls back to plain `lm()` when no `model:` is configured. Unknown provider → same
-  `ValueError` path as today.
+  resolves profile/inline config through `lm(...)` and falls back to plain `lm()` when no
+  `model:` is configured. **Inheritance:** subagents without `model:` use the main agent's
+  resolved model. Unknown provider → same `ValueError` path as today.
 
 ### 3. Backend registry + env interpolation
 
 New module `dynagent/agents/deep_backend.py`:
 
 ```python
-_BACKEND_REGISTRY: dict[str, Callable[[dict], BACKEND_TYPES | None]] = {
+_BACKEND_REGISTRY: dict[str, Callable[..., BACKEND_TYPES | None]] = {
     "state":      lambda cfg: None,   # deepagents default (StateBackend)
     "filesystem": lambda cfg: FilesystemBackend(root_dir=cfg["root_dir"]),
     "fserver":    lambda cfg: _fserver_factory(cfg),   # returns a BackendFactory (see §4)
+    "store":      lambda cfg, store: StoreBackend(...),          # needs the store= kwarg
+    "composite":  lambda cfg, **kw: _composite_factory(cfg, **kw),  # routes → recursion
 }
 ```
 
-- `resolve_backend(backend_config, override=None)`: an explicit `backend=` kwarg instance
-  (escape hatch) wins over YAML; unknown `type:` fails fast with the valid choices listed.
+- `resolve_backend(backend_config, override=None, store=None)`: an explicit `backend=` kwarg
+  instance (escape hatch) wins over YAML; unknown `type:` fails fast with the valid choices
+  listed.
 - `type: filesystem` creates `root_dir` if missing (mirrors the reference impl).
+- **`type: composite`** (adopted from ChainAgents) maps to deepagents' `CompositeBackend`:
+  each entry in `routes:` is itself a backend config resolved recursively through the same
+  registry; the unrouted default is `StateBackend`. Example: `/workspace/` → `fserver` (durable,
+  session-scoped files), `/memories/` → `store` (persistent agent memories), everything else →
+  ephemeral state. A `store`-type route without a `store=` kwarg fails fast at build time with
+  a clear message.
 
 ### 4. `FileServerBackend` — sidecar-backed virtual filesystem
 
@@ -153,6 +196,16 @@ error **strings**, while `BackendProtocol` expects structured results and raised
 thin raw functions (return bytes / raise `httpx` errors) inside `fserver_client_utils`; the
 existing tool functions become wrappers with byte-identical behavior; `FileServerBackend`
 consumes the raw layer. Existing MER tools are untouched.
+
+### 4b. Tool-execution resilience middleware
+
+Adopted from ChainAgents: a small `AgentMiddleware` in shared-lib
+(`dynagent/middleware/tool_resilience.py`) implementing `wrap_tool_call` / `awrap_tool_call`:
+a tool exception becomes a `ToolMessage(status="error")` with a truncated summary telling the
+model to adjust inputs or take another approach, instead of aborting the whole run
+(`asyncio.CancelledError` is re-raised). Always on for the deep engine — appended to the
+`middleware` sequence passed to `create_deep_agent`. Deep-engine only; the react engine is
+untouched.
 
 ### 5. Config-driven subagents
 
@@ -204,12 +257,12 @@ return create_deep_agent(
     name=agent_name,
     skills=meta.skills_map.get(agent_name) or None,
     memory=meta.memory_map.get(agent_name) or None,
-    backend=resolve_backend(meta.backend_config, override=backend),
+    backend=resolve_backend(meta.backend_config, override=backend, store=store),
     subagents=merged_subagents or None,          # YAML roster + kwarg escape hatch
     response_format=resolved_output_schema,      # from output: config
     interrupt_on=meta.interrupt_map.get(agent_name) or None,
     permissions=meta.permissions_map.get(agent_name) or None,
-    middleware=middleware or (),
+    middleware=[ToolResilienceMiddleware(), *(middleware or ())],   # §4b, always on
     store=store, cache=cache, context_schema=context_schema, debug=debug,
 )
 ```
@@ -218,11 +271,11 @@ return create_deep_agent(
 
 | Phase | Content |
 |---|---|
-| **P1** | Config keys (`skills`, `memory`, `model`, `default_backend`) + `AgentMeta` maps + env interpolation + backend registry (`state`/`filesystem`) + `lm()` extension → parity with the blog reference `agent.py` |
-| **P2** | `FileServerBackend` (`type: fserver`): raw-function extraction in `fserver_client_utils`, `BackendProtocol` implementation with client-side edit/glob/grep, runtime-state factory |
+| **P1** | Config keys (`skills`, `memory`, `model`, `models` profiles, `default_backend`) + `AgentMeta` maps + env interpolation + backend registry (`state`/`filesystem`) + `lm()` extension + model-profile resolution + `ToolResilienceMiddleware` → parity with the blog reference `agent.py` |
+| **P2** | `FileServerBackend` (`type: fserver`): raw-function extraction in `fserver_client_utils`, `BackendProtocol` implementation with client-side edit/glob/grep, runtime-state factory. Plus `composite`/`store` registry types (CompositeBackend routes) |
 | **P3** | Config-driven subagents: roster mapping (with per-subagent model/skills), description validation, merge with `subagents:` kwarg |
 | **P4** | `response_format` from `output:`, `interrupt_on`, `permissions` |
-| **P5** | Escape-hatch kwargs (`store`, `middleware`, `cache`, `context_schema`, `debug`) |
+| **P5** | Escape-hatch kwargs (`store`, `middleware`, `cache`, `context_schema`, `debug`) — note `store` moves up to P2 if a `store`-type route is needed then |
 
 Each phase is independently shippable; P2–P5 have no ordering dependencies between them beyond
 P1's config plumbing.
@@ -230,12 +283,15 @@ P1's config plumbing.
 ## Testing
 
 - **Unit (per phase):** fake `AgentMeta` + monkeypatched `create_deep_agent` asserting forwarded
-  params (existing factory-test pattern); backend registry incl. `${VAR}` interpolation and
-  unknown-type failure; `lm()` override args + backward compatibility; `FileServerBackend`
-  against a mocked httpx transport — direct methods plus emulation semantics (especially
-  `edit`'s unique-occurrence check and `glob`/`grep` filtering); subagent mapping (roster →
-  `SubAgent` list, description validation, kwarg merge precedence); `response_format` wiring
-  from `output:` config.
+  params (existing factory-test pattern); backend registry incl. `${VAR}` interpolation,
+  unknown-type failure, and composite-route recursion (incl. `store` route without `store=`
+  kwarg failing fast); model-profile resolution (profile name, inline string, unknown-value
+  load failure, subagent inheritance); `lm()` override args + backward compatibility;
+  `ToolResilienceMiddleware` (exception → error `ToolMessage`, `CancelledError` re-raised);
+  `FileServerBackend` against a mocked httpx transport — direct methods plus emulation
+  semantics (especially `edit`'s unique-occurrence check and `glob`/`grep` filtering); subagent
+  mapping (roster → `SubAgent` list, description validation, kwarg merge precedence);
+  `response_format` wiring from `output:` config.
 - **Integration (`sanity`):** AMA agent with `skills` + `memory` on `FilesystemBackend` answers
   a question and reads a `SKILL.md`; one MER-side `integration`-marked test running
   `FileServerBackend` against a live sidecar.

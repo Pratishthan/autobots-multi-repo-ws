@@ -110,7 +110,8 @@ agents:
 
 - **`AgentConfig`** new fields: `model: str | None`, `skills: list[str]`,
   `memory: list[str]`, `interrupt_on: dict[str, bool | dict]`, `permissions: list`,
-  `description: str | None`, `mcp_servers: list[str]` (P6, see §9).
+  `description: str | None`, `mcp_servers: list[str]` (P6, see §9),
+  `rubric: dict | None` (P7, see §10).
 - **`load_agents_config`** additionally parses the top-level `default_backend`, `models`,
   and `mcp_servers` (P6) blocks.
 - **`AgentMeta`** gains `model_map`, `skills_map`, `memory_map`, `interrupt_map`,
@@ -299,6 +300,49 @@ agents:
 - Referencing an undeclared server name fails fast at config load. Subagents may reference
   `mcp_servers:` the same way (merged into their `SubAgent` tools in the §5 mapping).
 
+### 10. Config-driven rubric grading (P7)
+
+deepagents 0.6.12 ships `RubricMiddleware` — an LLM-as-a-judge loop where a grader model
+reviews the agent's transcript against caller-supplied criteria and re-runs the agent with
+feedback until `satisfied` or `max_iterations`. It is **not** a `create_deep_agent` kwarg
+(plain `AgentMiddleware`), so it doesn't affect kwarg parity; P7 makes it config-first:
+
+```yaml
+agents:
+  assistant:
+    rubric:                        # presence → RubricMiddleware appended to middleware list
+      model: cheap-docs            # profile name or inline "provider:name";
+                                   # omitted → the agent's own resolved model (§2)
+      prompt: "rubric-grader"      # → prompts/rubric-grader.md; omitted → built-in grader prompt
+      tools: ["run_test_suite"]    # registered dynagent tools the grader may call (optional)
+      max_iterations: 3            # optional; deepagents default 3, hard cap 20
+```
+
+- All grader construction reuses P1 plumbing: `model` resolves through
+  `resolve_agent_model`-style profile/inline lookup, `prompt` through the same prompt-file
+  path as agents, `tools` through the dynagent tool registry (unknown name fails fast at
+  config load).
+- The middleware is a no-op when no rubric is supplied at invocation, so appending it
+  unconditionally-when-configured is safe. Ordering: after `ToolResilienceMiddleware` (§4b)
+  so grader tool calls get the same resilience.
+- **Any roster entry may declare `rubric:`**, not just the main agent: `SubAgent` accepts a
+  `middleware:` field, so the §5 mapping appends the configured `RubricMiddleware` there.
+  Caveat: criteria arrive via the public `rubric` state key, and the `task` tool forwards
+  parent state to subagents verbatim — so one caller-supplied rubric string is shared by the
+  main agent and every rubric-enabled subagent in the run. Per-subagent criteria (a static
+  `criteria:` string/file in YAML seeded into subagent state by our wrapper) are a possible
+  P7 extension, not adopted in the first cut.
+- **Rubric criteria are per-invocation state**, not YAML: callers pass a `rubric` string
+  (newline-delimited criteria) in the invocation input. `invoke_agent`/`ainvoke_agent` must
+  pass it through; the middleware contributes its own `RubricState` keys
+  (e.g. `_rubric_status`) to the state schema.
+- Non-satisfied terminations (`max_iterations_reached`, `failed`, `grader_error`) do **not**
+  mutate the final message — drivers that must branch on them inspect `_rubric_status` on the
+  returned state, the `on_evaluation` callback (Python-only escape hatch, alongside
+  `middleware=`), or the `rubric_evaluation_start`/`rubric_evaluation_end` custom stream
+  events (surfacing these in `stream_agent_events` is driver-side follow-up, same status as
+  `interrupt_on` UX in §6).
+
 ## Phasing (build order — reference-impl first)
 
 | Phase | Content |
@@ -309,9 +353,10 @@ agents:
 | **P4** | `response_format` from `output:`, `interrupt_on`, `permissions` |
 | **P5** | Escape-hatch kwargs (`store`, `middleware`, `cache`, `context_schema`, `debug`) — note `store` moves up to P2 if a `store`-type route is needed then |
 | **P6** | Config-driven MCP servers: `mcp_servers:` block + per-agent references, `langchain-mcp-adapters` dependency, name-prefixed tool merging |
+| **P7** | Config-driven rubric grading: per-agent `rubric:` block → `RubricMiddleware` (grader model via profiles, prompt file, registry tools, `max_iterations`), `rubric` invocation-state passthrough in `invoke_agent`/`ainvoke_agent` |
 
 Each phase is independently shippable; P2–P5 have no ordering dependencies between them beyond
-P1's config plumbing.
+P1's config plumbing. P7 depends on P1 (model profiles + prompt resolution) only.
 
 ## Testing
 
@@ -325,7 +370,10 @@ P1's config plumbing.
   semantics (especially `edit`'s unique-occurrence check and `glob`/`grep` filtering); subagent
   mapping (roster → `SubAgent` list, description validation, kwarg merge precedence);
   `response_format` wiring from `output:` config; MCP config parsing (undeclared server
-  reference fails at load; tool-name prefixing) with a stubbed `MultiServerMCPClient`.
+  reference fails at load; tool-name prefixing) with a stubbed `MultiServerMCPClient`;
+  rubric config parsing (grader model/prompt/tool resolution, unknown tool name fails at
+  load, middleware appended only when `rubric:` present, ordering after
+  `ToolResilienceMiddleware`) plus `rubric` invocation-state passthrough.
 - **Integration (`sanity`):** AMA agent with `skills` + `memory` on `FilesystemBackend` answers
   a question and reads a `SKILL.md`; one MER-side `integration`-marked test running
   `FileServerBackend` against a live sidecar.
@@ -347,3 +395,8 @@ P1's config plumbing.
   if the factory is ever called from a running event loop (e.g. inside Chainlit startup) —
   needs the event-loop-aware pattern; also adds startup latency and a new dependency
   (`langchain-mcp-adapters`), both confined to P6.
+- **Rubric non-satisfied terminations (P7)**: `max_iterations_reached`/`grader_error` leave
+  the last model output as the final message; drivers that must branch on grading outcome
+  need `_rubric_status`/callback/stream-event handling — P7 delivers construction + state
+  passthrough, driver UX is a separate effort (same split as `interrupt_on`). Each grading
+  pass is an extra LLM run (up to `max_iterations`) — cost is bounded but nontrivial.

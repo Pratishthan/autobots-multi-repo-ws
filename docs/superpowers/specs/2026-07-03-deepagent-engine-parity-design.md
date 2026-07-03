@@ -31,10 +31,10 @@ blog's `deep-agents-langchain-blog/agent.py` is the target *usage shape* for Pha
 
 **Reference pass:** ChainAgents' `chainagents/runtime/core.py` (TOML-driven deepagents runtime)
 was reviewed as a second reference. Adopted from it: **CompositeBackend path routes**, **named
-model profiles**, and **tool-execution resilience middleware** (see §2–§4b). Explicitly not
-adopted: nested/async subagents, summarization tuning + status events, configurable
-`recursion_limit`, MCP server config, per-provider tool-schema sanitization (dynagent's tool
-registry and backend design cover or defer these).
+model profiles**, **tool-execution resilience middleware** (see §2–§4b), and **config-driven
+MCP servers** (see §9, P6). Explicitly not adopted: nested/async subagents, summarization
+tuning + status events, configurable `recursion_limit`, per-provider tool-schema sanitization
+(dynagent's tool registry and backend design cover or defer these).
 
 ## Goal
 
@@ -51,8 +51,8 @@ Phased path to full `create_deep_agent` parity, **config-first**: capabilities a
 - No sandbox/`execute` backend support (no `SandboxBackendProtocol` implementation).
 - No nested subagents (subagents owning child subagents) and no async/remote subagents
   (Agent Protocol) — flat main + one subagent level covers the AMA use case.
-- No summarization tuning/status events, no configurable `recursion_limit`, no MCP server
-  config (reviewed in the ChainAgents pass, deliberately not adopted).
+- No summarization tuning/status events, no configurable `recursion_limit` (reviewed in the
+  ChainAgents pass, deliberately not adopted).
 
 ## Design
 
@@ -110,9 +110,9 @@ agents:
 
 - **`AgentConfig`** new fields: `model: str | None`, `skills: list[str]`,
   `memory: list[str]`, `interrupt_on: dict[str, bool | dict]`, `permissions: list`,
-  `description: str | None`.
-- **`load_agents_config`** additionally parses the top-level `default_backend` and `models`
-  blocks.
+  `description: str | None`, `mcp_servers: list[str]` (P6, see §9).
+- **`load_agents_config`** additionally parses the top-level `default_backend`, `models`,
+  and `mcp_servers` (P6) blocks.
 - **`AgentMeta`** gains `model_map`, `skills_map`, `memory_map`, `interrupt_map`,
   `permissions_map`, `description_map`, `backend_config`, `model_profiles` — built like the
   existing maps.
@@ -267,6 +267,38 @@ return create_deep_agent(
 )
 ```
 
+### 9. Config-driven MCP servers (P6)
+
+Adopted from the ChainAgents pass (and the AMA feature review): external integrations
+(Jira/Confluence, GitHub, internal APIs) via MCP, declared in config instead of hand-written
+dynagent tools. Uses `langchain-mcp-adapters` (new dependency, added in P6 only).
+
+```yaml
+mcp_servers:                       # top-level block
+  atlassian:
+    transport: streamable_http     # or stdio
+    url: "${ATLASSIAN_MCP_URL}"
+    headers:
+      Authorization: "Bearer ${ATLASSIAN_MCP_TOKEN}"
+  internal-api:
+    transport: stdio
+    command: "uvx"
+    args: ["internal-mcp-server"]
+
+agents:
+  assistant:
+    mcp_servers: ["atlassian"]     # per-agent reference; tools merged into the agent's list
+```
+
+- Loaded once at factory build via `MultiServerMCPClient(...).get_tools()`; the factory is
+  sync, so loading runs through `asyncio.run` (or an event-loop-aware equivalent) — same
+  pattern ChainAgents uses.
+- Tool names are prefixed with the server name (`atlassian__search`) to avoid collisions with
+  registered dynagent tools.
+- `${VAR}` interpolation (§1) covers URLs and auth headers; secrets stay in env.
+- Referencing an undeclared server name fails fast at config load. Subagents may reference
+  `mcp_servers:` the same way (merged into their `SubAgent` tools in the §5 mapping).
+
 ## Phasing (build order — reference-impl first)
 
 | Phase | Content |
@@ -276,6 +308,7 @@ return create_deep_agent(
 | **P3** | Config-driven subagents: roster mapping (with per-subagent model/skills), description validation, merge with `subagents:` kwarg |
 | **P4** | `response_format` from `output:`, `interrupt_on`, `permissions` |
 | **P5** | Escape-hatch kwargs (`store`, `middleware`, `cache`, `context_schema`, `debug`) — note `store` moves up to P2 if a `store`-type route is needed then |
+| **P6** | Config-driven MCP servers: `mcp_servers:` block + per-agent references, `langchain-mcp-adapters` dependency, name-prefixed tool merging |
 
 Each phase is independently shippable; P2–P5 have no ordering dependencies between them beyond
 P1's config plumbing.
@@ -291,7 +324,8 @@ P1's config plumbing.
   `FileServerBackend` against a mocked httpx transport — direct methods plus emulation
   semantics (especially `edit`'s unique-occurrence check and `glob`/`grep` filtering); subagent
   mapping (roster → `SubAgent` list, description validation, kwarg merge precedence);
-  `response_format` wiring from `output:` config.
+  `response_format` wiring from `output:` config; MCP config parsing (undeclared server
+  reference fails at load; tool-name prefixing) with a stubbed `MultiServerMCPClient`.
 - **Integration (`sanity`):** AMA agent with `skills` + `memory` on `FilesystemBackend` answers
   a question and reads a `SKILL.md`; one MER-side `integration`-marked test running
   `FileServerBackend` against a live sidecar.
@@ -309,3 +343,7 @@ P1's config plumbing.
   effort.
 - **deepagents version drift**: design is pinned to 0.6.12 semantics (`permissions`,
   `state_schema`, `BackendFactory`); re-verify signatures on any bump.
+- **MCP loading in a sync factory (P6)**: `asyncio.run` inside `create_base_deepagent` breaks
+  if the factory is ever called from a running event loop (e.g. inside Chainlit startup) —
+  needs the event-loop-aware pattern; also adds startup latency and a new dependency
+  (`langchain-mcp-adapters`), both confined to P6.

@@ -113,6 +113,15 @@ def dispatch_label(self, run_id) -> str:
     """'{subagent_type} · {description-trimmed}', falling back to subagent_type,
     then 'sub-agent'. Description: newlines collapsed to spaces, trimmed to ~60
     chars on a word boundary."""
+
+def subagent_key(self, event) -> str | None:
+    """Identity of the subagent surface this event belongs to: dispatch run_id when
+    a task ancestor is known, else the distinct lc_agent_name (legacy fallback), else
+    None (main agent). Full definition in §2."""
+
+def step_label(self, key) -> str:
+    """dispatch_label(key) when key is a known dispatch run_id (key in self.dispatches),
+    else the bare key (legacy agent name)."""
 ```
 
 `observe()` calls `observe_task_start()` internally.
@@ -127,28 +136,49 @@ Correctness rules baked in:
 
 ### 2. `ChainlitStepRenderer` consumes dispatch identity
 
-Re-key subagent surfaces by dispatch `run_id` (`dynagent/ui/ui_utils.py`).
+Re-key subagent surfaces by a **subagent key** that is the dispatch `run_id` when a task
+ancestor is known, and falls back to `lc_agent_name` otherwise
+(`dynagent/ui/ui_utils.py`). The fallback preserves today's behavior for event streams
+that carry no `parent_ids` (older LangGraph, or classic single-graph domains) — dispatch
+keying is a strict improvement layered on top, not a replacement.
+
+The subagent-key rule (a small method on `StreamAttribution`, see §1):
+
+```python
+def subagent_key(self, event) -> str | None:
+    d = self.dispatch_of(event)
+    if d is not None:
+        return d                         # dispatch run_id — separates same-type fan-out
+    agent = self.owner(event)
+    if agent is not None and agent != self.main_agent:
+        return agent                     # legacy fallback: distinct lc_agent_name
+    return None                          # main agent / fail-open
+```
 
 State changes:
 
 ```python
-self._dispatch_steps: dict[str, cl.Step] = {}   # replaces _agent_steps (name -> step)
-# _task_agent dict removed — its job (task run_id -> step to collapse) is now direct:
-# the task run_id IS the dispatch key.
+self._subagent_steps: dict[str, cl.Step] = {}   # renamed from _agent_steps; keyed by subagent_key
+self._task_dispatch: dict[str, str] = {}        # renamed from _task_agent; task run_id -> subagent_type
 ```
 
-- **`_on_token`:** `dispatch_id = self._attr.dispatch_of(event)`. `None` → stream into
-  `self.msg` (main bubble). Else `_get_or_create_dispatch_step(dispatch_id)` and stream
-  into it. `_get_or_create_dispatch_step` lazily creates one
-  `cl.Step(name=f"🧵 {self._attr.dispatch_label(dispatch_id)}", type="run",
-  default_open=True, auto_collapse=True)` per dispatch, cached by run_id.
+- **`_on_token`:** `key = self._attr.subagent_key(event)`. `None` → stream into `self.msg`
+  (main bubble). Else `_get_or_create_subagent_step(key)` and stream into it.
+  `_get_or_create_subagent_step` lazily creates one
+  `cl.Step(name=f"🧵 {self._attr.step_label(key)}", type="run", default_open=True,
+  auto_collapse=True)`, cached by key. `step_label(key)` returns
+  `dispatch_label(key)` when `key` is a known dispatch run_id, else the bare `key`
+  (legacy agent name).
 - **`_on_tool_start`:** a subagent's own tool call parents under
-  `_dispatch_steps[dispatch_of(event)]`. Main-agent tools keep the existing
+  `_subagent_steps[subagent_key(event)]`. Main-agent tools keep the existing
   `deque(maxlen=3)` eviction untouched.
-- **`_on_tool_end`:** when a `task` tool ends, its `run_id` *is* the dispatch key →
-  collapse `_dispatch_steps.get(run_id)` directly. Deletes the `_task_agent` indirection.
-- **`finish`:** collapses any still-open dispatch steps, iterating
-  `_dispatch_steps.values()`.
+- **`_on_tool_end`:** when a `task` tool ends (`run_id in self._attr.dispatches`), collapse
+  the subagent step for it. Deepagent path: the subagent step is keyed by the task
+  `run_id` itself (that's what `dispatch_of` returned for its child events), so collapse
+  `_subagent_steps.get(run_id)`. Legacy path: bridge through
+  `_subagent_steps.get(self._task_dispatch.get(run_id))`. Collapse whichever resolves.
+- **`finish`:** collapses any still-open subagent steps, iterating
+  `_subagent_steps.values()`.
 
 No change to the main-agent bubble, structured-output handling, or tool eviction.
 
@@ -158,16 +188,38 @@ Fix labels and nested-tool rollup (`dynagent/ui/activity_projection.py`). Distin
 dispatches already yield distinct rail rows here (each `task` tool is keyed by its own
 `tcid`); the bug is only the label and the nested-tool cross-contamination.
 
-- Add `self._dispatch: dict[str, DispatchInfo]` populated at `TOOL_CALL_END` for `task`
-  tools — extend the existing `subagent_type` parse (`activity_projection.py:88-93`) to
-  also capture `description`, keyed by the task's own `tool_call_id`.
-- **`snapshot()` task branch:** title becomes `dispatch_label(tcid)`;
-  `_nested_mono(subagent_type)` becomes `_nested_mono(dispatch_id)` — select nested tools
-  whose parentage resolves (via dispatch attribution) to *this dispatch's* run_id, not any
-  tool sharing the agent-type name.
-- **Shared attribution:** `ActivityProjection` composes a `StreamAttribution` instance and
-  feeds its RAW events through it, so there is exactly one implementation of "which
-  dispatch owns this." No duplication of the `parent_ids`-nearest-task logic.
+**The two-namespace problem.** The projection's rail rows are built from **AG-UI** events
+(`TOOL_CALL_START/ARGS/END/RESULT`) keyed by Anthropic `toolu_…` tool-call ids, whereas
+dispatch attribution lives on the **RAW** astream_events keyed by LangGraph `run_id`s. A
+task row (`toolu_…`) and its dispatch (`run_id`) are in different namespaces. Both `task`
+dispatches even share the same AG-UI `parent_message_id` (the coordinator model), so
+`parent_message_id` cannot separate them. Three joins, all verified present in the RAW
+events the projection already receives (wrapped as `type == "RAW"`), bridge the gap:
+
+1. **dispatch info** — RAW `on_tool_start(name="task")`: `run_id` is the dispatch id; its
+   `data.input` carries `subagent_type` **and** `description`.
+2. **model-run → dispatch** — RAW `on_chat_model*` for a subagent: `run_id` is the
+   subagent's model-run; its `parent_ids` contains the dispatch `run_id`. This is exactly
+   `StreamAttribution.dispatch_of`.
+3. **toolu → dispatch** — RAW `on_tool_end(name="task")`: event `run_id` is the dispatch
+   id; `data.output` is a ToolMessage whose `tool_call_id` is the AG-UI `toolu_…`. This
+   bridges the rail row to its dispatch.
+
+Implementation:
+
+- `ActivityProjection` composes a `StreamAttribution`, feeding it every RAW event, so there
+  is one implementation of dispatch attribution shared with the Chainlit renderer.
+- New projection maps: `self._model_dispatch: dict[str, str]` (subagent model-run →
+  dispatch run_id, from join 2 via `dispatch_of`) and `self._toolu_dispatch: dict[str,
+  str]` (AG-UI `toolu_` → dispatch run_id, from join 3).
+- **`snapshot()` task branch:** title becomes
+  `self._attr.dispatch_label(self._toolu_dispatch[tcid])` (falls back to the AG-UI-parsed
+  `subagent_type`, then `"sub-agent"`, if the toolu bridge is absent); `_nested_mono` now
+  filters nested tools to those whose `parent_run_id` (their subagent model-run) maps via
+  `_model_dispatch` to *this row's* dispatch run_id, instead of matching any tool whose
+  parent shares the agent-type name.
+- The AG-UI `subagent_type`/`description` parse at `TOOL_CALL_END` (`activity_projection.py:88-93`)
+  is retained as the label fallback when RAW joins are unavailable.
 
 ### 4. Edge cases & error handling
 
@@ -176,9 +228,10 @@ never a dropped token).
 
 | Case | Behavior |
 |---|---|
-| `parent_ids` missing/empty (older LangGraph, main-agent events) | `dispatch_of` → `None` → main bubble. Today's behavior; no regression. |
+| `parent_ids` missing/empty on a genuine subagent event (older LangGraph) | `dispatch_of` → `None`, then `subagent_key` legacy fallback returns the distinct `lc_agent_name` → subagent still gets its own step (today's behavior). Same-type collision persists only in this degraded path; different-type still separates. |
+| Main-agent event | `dispatch_of` → `None` and `owner == main_agent` → `subagent_key` returns `None` → main bubble. No regression. |
 | `task` input un-parseable (partial/streamed args JSON) | `observe_task_start` try/except → `DispatchInfo(None, None)`; label falls back to `"sub-agent"`. Never raises. |
-| Token arrives before its `task` on_tool_start observed | `dispatch_of` finds the run_id in `parent_ids` but not yet in `self.dispatches` → buffer under a provisional step keyed by that run_id; label backfilled when the task start is later observed. No lost tokens. |
+| Token arrives before its `task` on_tool_start observed | Does not occur: `astream_events` v2 emits a node's `on_tool_start` before any child (subagent) event, so the dispatch is always registered first. If it ever did, `subagent_key` fails open to the legacy `lc_agent_name` path (or main) — graceful, no crash, no provisional-step machinery (YAGNI). |
 | Nested subagent dispatches its own task | `parent_ids` holds both ancestors root→deep; nearest-match returns the inner dispatch → nested step parents correctly. |
 | UUIDv7 time-prefix collision | Guarded by full-string equality only. Explicit test. |
 | Same-type, same-description dispatches (identical labels) | Steps keyed by distinct run_ids, so surfaces stay separate even with identical labels. Correctness doesn't depend on label uniqueness. |
@@ -219,8 +272,14 @@ existing renderer tests do):
 - `_nested_mono` rolls up each dispatch's own nested tools only.
 - `stats` (tokens/tools/latency) unchanged vs. current snapshot on the existing fixture.
 
-**Regression:** existing single-dispatch and no-subagent fixtures yield byte-identical
-output to today (golden snapshot).
+**Regression / backward-compat:** the existing renderer tests build subagents purely via a
+distinct `lc_agent_name` with no task dispatch and no `parent_ids`. These exercise the
+legacy `subagent_key` fallback and must keep passing with only the mechanical rename
+(`_agent_steps` → `_subagent_steps`, `_task_agent` → `_task_dispatch`) — no behavioral
+change. New same-type tests add explicit `task` `on_tool_start` events and `parent_ids` on
+the subagent streams to exercise the dispatch path. The existing `ActivityProjection`
+golden test titles change from bare type (`"weather_expert"`) to
+type-plus-description; `stats`, `mono`, ordering, and dots stay identical.
 
 Coverage runs via `make test`; new fixtures live beside the current one.
 

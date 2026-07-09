@@ -4,14 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Python monorepo workspace with 4 repos sharing a **single venv** at `ws-autobots/.venv/`:
+Workspace of 5 independently-cloned child repos. The 4 Python repos share a **single venv** at `ws-autobots/.venv/`:
 
-| Repo | Purpose | Version |
-|------|---------|---------|
-| `autobots-devtools-shared-lib` | Dynagent multi-agent framework (core library) | 0.4.0 |
-| `autobots-agents-jarvis` | Demo app: Concierge, Customer Support, Sales domains | 0.1.0 |
-| `autobots-agents-mer` | SDLC automation: Designer, Nurture domains | 0.2.1 |
-| `autobots-agents-pay` | Knowledge Base Extractor (KBE) | 0.1.0 |
+| Repo | Purpose | Domains | Version |
+|------|---------|---------|---------|
+| `autobots-devtools-shared-lib` | Dynagent multi-agent framework (core library) | — | 0.11.0b2 |
+| `autobots-agents-jarvis` | Demo app | concierge, customer-support, sales | 0.1.0 |
+| `autobots-agents-mer` | SDLC automation | ama, demo, designer, nurture | 0.3.0 |
+| `autobots-agents-pay` | Knowledge Base Extractor (KBE) | demo, kbe | 0.1.0 |
+
+Plus one non-Python repo:
+
+| Repo | Purpose |
+|------|---------|
+| `autobots-docs` | MkDocs + Obsidian-style documentation site (`mkdocs.yml`, content under `docs/`) |
+
+`autobots-docs` is **not** a Python package: it has no venv, no tests, and is absent from the `REPOS` list in the workspace `Makefile`, so `make test` / `lint` / `type-check` skip it entirely. Build it with `mkdocs` from inside the repo.
+
+Each child repo is its own git repo with its own remote — the workspace root does not track them as submodules.
 
 Domain-specific guidance lives in `autobots-agents-mer/CLAUDE.md` and `autobots-agents-pay/CLAUDE.md`.
 
@@ -48,7 +58,8 @@ make check-format                            # ruff format --check + ruff check
 
 ## Gotchas
 
-- **Shared venv**: All repos use `../.venv` (workspace root), not individual venvs. Activate with `source .venv/bin/activate` from workspace root.
+- **Shared venv**: The 4 Python repos use `../.venv` (workspace root), not individual venvs. Activate with `source .venv/bin/activate` from workspace root.
+- **Nested repos are gitignored**: The root `.gitignore` lists each child repo so the workspace never tracks them as submodules. A newly cloned child repo must be added there, or it shows up as untracked in the root `git status`.
 - **Pre-commit hooks**: Commit from **inside each repo** (not workspace root). Hooks run ruff + pyright + pytest + poetry check.
 - **Pyright config**: Must use `venvPath = ".."` and `venv = ".venv"` for monorepo mode. Some repos have this commented out — check if pyright fails.
 - **Local path dependencies**: Jarvis and MER have `develop = true` path dep on shared-lib in pyproject.toml. Pay has it commented out.

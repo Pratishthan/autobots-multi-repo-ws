@@ -17,11 +17,8 @@ Domain-specific guidance lives in `autobots-agents-mer/CLAUDE.md` and `autobots-
 
 ## Design Philosophy
 
-@dyna-vault/README.md
-
 - **Non-intrusive**: Solutions must not change existing developer workflows
 - **Design First**: All significant work starts with a Low-Level Design (LLD) document
-- Design templates: `dyna-vault/designs/templates/`
 
 ## Commands
 

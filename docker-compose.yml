@@ -124,9 +124,9 @@ services:
   minio:
     image: docker.io/chainguard/minio
     restart: always
-    entrypoint: sh
+    entrypoint: ["sh", "-c"]
     # create the 'langfuse' bucket before starting the service
-    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    command: ["mkdir -p /data/langfuse && minio server --address \":9000\" --console-address \":9001\" /data"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-miniosecret} # CHANGEME
@@ -146,9 +146,7 @@ services:
     image: docker.io/redis:7
     restart: always
     # CHANGEME: row below to secure redis password
-    command: >
-      --requirepass ${REDIS_AUTH:-myredissecret}
-      --maxmemory-policy noeviction
+    command: ["--requirepass", "${REDIS_AUTH:-myredissecret}", "--maxmemory-policy", "noeviction"]
     ports:
       - 127.0.0.1:6379:6379
     healthcheck:
@@ -158,8 +156,9 @@ services:
       retries: 10
 
   postgres:
-    image: docker.io/postgres:${POSTGRES_VERSION:-17}
+    image: docker.io/postgres:17
     restart: always
+    user: "999:999"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 3s
@@ -169,9 +168,13 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres} # CHANGEME
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      PGDATA: /var/lib/postgresql/data/pgdata
       TZ: UTC
       PGTZ: UTC
     ports:
       - 127.0.0.1:5432:5432
     volumes:
-      - ${DOCKER_DATA_DIR}/pg_data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  pg_data:
